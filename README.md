@@ -14,7 +14,7 @@ lab.example.com/anna/acme/k3v9qz7mtp/landing
                  └ designer slug → rewritten to anna's own Vercel project
 ```
 
-- **One domain, many owners.** Each designer keeps their own repo and their own deploys. Two rewrite lines in `vercel.json` send `/<slug>/*` to their project. Clients only ever see your domain.
+- **One domain, many owners.** Each designer keeps their own repo and their own deploys. Two rewrite lines in `vercel.json` send `/<slug>/*` to their project. Clients only ever see your domain. With a static site (we use Astro), a push is live on Vercel in about 20 seconds.
 - **One script for comments.** `<script src="https://lab.example.com/_lab/comments.js" defer>` in a site's layout. It only switches on when the page is opened through the lab domain.
 - **One link for agents.** `lab.example.com/_lab/agent/<page path>` returns every open comment as plain text: the image file and spot in the original pixels, the quoted words, the video time, the nearest section, the viewport and the build commit.
 
