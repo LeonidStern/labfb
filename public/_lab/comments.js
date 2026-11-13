@@ -94,7 +94,7 @@
                         animation: lab-halo .9s cubic-bezier(.2, .7, .3, 1) forwards; }
       .pin.resolved { color: var(--_muted); }
       .pin.moved { opacity: .5; }
-      .zone { position: absolute; border: 1px solid color-mix(in srgb, var(--_accent) 45%, transparent); background: color-mix(in srgb, var(--_accent) 5%, transparent);
+      .zone { position: absolute; border: 1.5px dotted color-mix(in srgb, var(--_accent) 55%, transparent); background: color-mix(in srgb, var(--_accent) 5%, transparent);
               border-radius: var(--_radius); pointer-events: none; }
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
       .zone.saved { background: color-mix(in srgb, var(--_accent) 3%, transparent); }
