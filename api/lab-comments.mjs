@@ -2,7 +2,9 @@
 // https://github.com/leonidstern/labfb · MIT
 // Storage: Upstash Redis over its REST API, one hash per page: field = comment id, value = JSON.
 // Env: KV_REST_API_URL + KV_REST_API_TOKEN (or UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN),
-// LAB_HOST (e.g. lab.example.com), LAB_COMMENTS_ADMIN_TOKEN and LAB_ADMINS for resolving and deleting (see admins()).
+// LAB_HOST (e.g. lab.example.com), LAB_COMMENTS_ADMIN_TOKEN for resolving and deleting (see adminFor()).
+
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const LAB_HOST = process.env.LAB_HOST || '';
 const MAX = { name: 60, text: 2000, path: 300, selector: 600, context: 400, perPage: 500 };
@@ -42,37 +44,30 @@ function fromLab(request) {
   return (LAB_HOST && hostOf(request).split(':')[0] === LAB_HOST) || process.env.LAB_COMMENTS_ALLOW_ANY_HOST === '1';
 }
 
-// Admins. LAB_COMMENTS_ADMIN_TOKEN is the owner's key: every page.
-// LAB_ADMINS gives people their own key, comma-separated name=key, optionally @/slug (or @/a+/b) to limit it to those paths:
-//   LAB_ADMINS="anna=<key>@/anna, sam=<key>@/sam+/acme, mia=<key>"
-// Keys are 16+ characters (openssl rand -hex 16). Change or remove an entry and redeploy to take admin away.
-function admins() {
-  const list = [];
-  if (process.env.LAB_COMMENTS_ADMIN_TOKEN) list.push({ name: 'owner', key: process.env.LAB_COMMENTS_ADMIN_TOKEN, paths: null });
-  for (const entry of (process.env.LAB_ADMINS || '').split(',')) {
-    const m = entry.trim().match(/^([^=\s]+)=([^@\s]{16,})(?:@(\S+))?$/);
-    if (!m) continue;
-    const paths = m[3] ? m[3].split('+').map((p) => '/' + p.replace(/^\/+|\/+$/g, '')).filter((p) => p !== '/') : null;
-    list.push({ name: m[1], key: m[2], paths: paths && paths.length ? paths : null });
-  }
-  return list;
-}
+// Admins. LAB_COMMENTS_ADMIN_TOKEN is the owner's key and works on every page.
+// Other people get keys signed with it, so nothing to configure per person: the owner (or their agent) asks
+//   POST /_lab/api/comments  {"action":"invite","name":"anna","page":"/anna/acme/k3v9qz7mtp/home"}  with header x-lab-admin: <owner token>
+// and gets back a link with ?lab-admin=<key>. The key works only under that page's slug (/anna); "scope":"*" for every page.
+// Take keys away: LAB_REVOKED="anna, sam" and redeploy, or change the owner token (ends them all).
+const NAME = /^[a-z0-9][a-z0-9-]{0,29}$/;
+const sign = (name, scope) =>
+  createHmac('sha256', process.env.LAB_COMMENTS_ADMIN_TOKEN).update(`lab-admin:${name}:${scope}`).digest('base64url').slice(0, 24);
 
-const sameKey = (a, b) => {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-};
+const sameKey = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 // The admin this request speaks for on this page, or null.
 function adminFor(request, path) {
+  const owner = process.env.LAB_COMMENTS_ADMIN_TOKEN;
   const sent = request.headers.get('x-lab-admin');
-  if (!sent) return null;
-  const admin = admins().find((a) => sameKey(a.key, sent));
-  if (!admin) return null;
-  if (admin.paths && !admin.paths.some((p) => path === p || path.startsWith(p + '/'))) return null;
-  return admin;
+  if (!owner || !sent) return null;
+  if (sameKey(sent, owner)) return { name: 'owner', owner: true };
+  const [name, scope, sig, extra] = sent.split('.');
+  if (extra !== undefined || !NAME.test(name || '') || !(scope === '*' || NAME.test(scope || '')) || !sig) return null;
+  if (!sameKey(sig, sign(name, scope))) return null;
+  const revoked = (process.env.LAB_REVOKED || '').split(',').map((s) => s.trim().toLowerCase());
+  if (revoked.includes(name)) return null;
+  if (scope !== '*' && path !== '/' + scope && !path.startsWith('/' + scope + '/')) return null;
+  return { name };
 }
 
 const isAdmin = (request, path) => Boolean(adminFor(request, path));
@@ -241,6 +236,17 @@ export async function POST(request) {
   const path = pagePath(body?.page);
   if (!path) return json({ error: 'bad page' }, 400);
   const key = `lab:comments:${path}`;
+
+  // Owner only: make an admin link for someone, limited to this page's slug unless scope is "*".
+  if (body.action === 'invite') {
+    if (!adminFor(request, path)?.owner) return json({ error: 'forbidden' }, 403);
+    const name = clean(body.name, 30).toLowerCase();
+    const scope = body.scope === '*' ? '*' : path.split('/')[1] || '*';
+    if (!NAME.test(name)) return json({ error: 'name: lowercase letters, digits and dashes' }, 400);
+    const key = `${name}.${scope}.${sign(name, scope)}`;
+    const link = `https://${hostOf(request).split(':')[0]}${path}?lab-admin=${key}`;
+    return json({ name, scope, key, link });
+  }
 
   // Resolve / reopen / delete: admin only.
   if (body.action === 'resolve' || body.action === 'reopen' || body.action === 'delete') {
