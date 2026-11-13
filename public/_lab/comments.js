@@ -106,24 +106,26 @@
               box-shadow: var(--_shadow); padding: 12px 14px 14px; transform-origin: 14px 0; z-index: 1; }
       .card.in, .float.in { animation: lab-in .18s var(--_ease); }
       .card.out, .float.out { animation: lab-out .14s ease-in forwards; pointer-events: none; }
-      .item + .item { border-top: var(--_hair); margin-top: 10px; padding-top: 10px; }
-      .meta { display: flex; align-items: baseline; gap: .3em; font-size: 12px; color: var(--_muted); margin-bottom: 3px;
+      .item { display: grid; row-gap: 3px; }
+      .item + .item { margin-top: 14px; }
+      .meta { display: flex; align-items: baseline; gap: .5em; font-size: 12px; color: var(--_muted); margin: 0;
               white-space: nowrap; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
       .meta b { font-weight: 500; font-size: 13px; letter-spacing: .005em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-      .meta .dot { flex: none; align-self: center; margin: 0 .2em 0 0; }
-      .meta .num { color: var(--_muted); font-variant-numeric: tabular-nums; margin-right: .15em; }
+      .meta .dot { flex: none; align-self: center; margin: 0; }
+      .meta .num { color: var(--_muted); font-variant-numeric: tabular-nums; margin-left: auto; }
+      .meta .ago { white-space: nowrap; }
       .text { white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
-      .row { display: flex; gap: 12px; justify-content: flex-end; align-items: center; margin-top: 10px; }
+      .row { display: flex; gap: 12px; justify-content: flex-start; align-items: center; margin-top: 8px; }
       button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
                    letter-spacing: .01em; border-radius: 4px; transition: color .12s; }
       button.btn:hover { color: var(--_fg); }
       .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
-      .card .composer { margin-top: 12px; }
+      .card .composer { margin-top: 14px; }
       .box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "text send"; align-items: center; column-gap: 8px;
              background: var(--_bg); border-radius: var(--_radius); padding: 7px 7px 7px 14px; transition: box-shadow .15s; }
       .float .box { box-shadow: var(--_shadow); }
       .float .box:focus-within { box-shadow: var(--_shadow), 0 0 0 .5px color-mix(in srgb, var(--_fg) 28%, transparent); }
-      .card .box { background: var(--_soft); border-radius: max(calc(var(--_radius) - 4px), 0px); margin: 0 -6px -6px; }
+      .card .box { background: var(--_soft); border-radius: max(calc(var(--_radius) - 2px), 0px); margin: 0; }
       .card .box.open { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent); }
       .card .box:focus-within { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 28%, transparent); }
       .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 10px 8px 8px 14px; }
@@ -610,6 +612,13 @@
   const repliesOf = (id) => comments.filter((c) => c.parent === id);
   // Pins show who left them: the first letter of the name.
   const initial = (name) => [...String(name || '').trim()][0]?.toUpperCase() || '';
+  const ago = (iso) => {
+    const s = Math.max(0, (Date.now() - new Date(iso)) / 1000);
+    const [n, unit] = s < 60 ? [0, ''] : s < 3600 ? [s / 60, 'minute'] : s < 86400 ? [s / 3600, 'hour'] : s < 2592000 ? [s / 86400, 'day'] : s < 31536000 ? [s / 2592000, 'month'] : [s / 31536000, 'year'];
+    if (!unit) return 'just now';
+    const k = Math.floor(n);
+    return `${k} ${unit}${k === 1 ? '' : 's'} ago`;
+  };
   const when = (iso) =>
     new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -806,9 +815,10 @@
     for (const item of [c, ...repliesOf(c.id)]) {
       const box = el('div', { class: 'item' });
       const meta = el('div', { class: 'meta' });
+      meta.append(el('b', {}, item.name), el('span', { class: 'ago', title: when(item.createdAt) }, ago(item.createdAt)));
       if (fresh.has(item.id)) meta.append(el('span', { class: 'dot', title: 'new' }));
-      if (item === c && !c.resolved) meta.append(el('span', { class: 'num' }, String(numberOf(c))));
-      meta.append(el('b', {}, item.name), document.createTextNode(` · ${when(item.createdAt)}`));
+      // The number the agent text uses for this thread.
+      if (item === c && !c.resolved) meta.append(el('span', { class: 'num', title: 'comment number, as in the agent link' }, String(numberOf(c))));
       box.append(meta, el('div', { class: 'text' }, item.text));
       card.append(box);
     }
@@ -1015,10 +1025,11 @@
     document.head.append(fonts);
     if (on) showHint();
     document.body.append(host);
-    // The page's own selection while commenting, and the quoted words of an open text comment, in the accent.
+    // The page's own selection while commenting, and the quoted words of an open text comment.
     // These rules live in the document, so the colours are read from the layer once it is in the page.
     const cs = getComputedStyle(host);
-    const paint = `background-color: ${cs.getPropertyValue('--_accent').trim() || '#6b57ff'}; color: ${cs.getPropertyValue('--_accent-fg').trim() || '#fff'};`;
+    // A soft tint of the accent, so the quoted words stay readable in the page's own colour.
+    const paint = `background-color: color-mix(in srgb, ${cs.getPropertyValue('--_accent').trim() || '#141414'} 16%, transparent); color: inherit;`;
     fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     load();
   };
