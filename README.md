@@ -34,6 +34,7 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
 - **Comment:** open a page through the lab domain, press `c`, then click or drag.
 - **Read:** `https://<lab domain>/_lab/agent/<page path>` returns every open comment as plain text.
 - **Resolve:** open any page once with `?lab-admin=<token>`.
+- **Admins:** give people their own key with `LAB_ADMINS="anna=<key>@/anna, mia=<key>"` (keys from `openssl rand -hex 16`; `@/slug` limits a key to that slug), redeploy, and send each person a page with `?lab-admin=<their key>`. Resolves record who closed them.
 - **Theme:** set `--lab-accent`, `--lab-bg`, `--lab-fg`, `--lab-radius` or `--lab-font` on `[data-lab-comments]`.
 
 Tested with Claude: two comments with replies come to 936 bytes of text, in one request, with no login. The script is 15 KB gzipped and loads after the page. Links are hidden, not locked, so don't put anything confidential there.

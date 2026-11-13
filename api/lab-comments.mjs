@@ -2,7 +2,7 @@
 // https://github.com/leonidstern/labfb · MIT
 // Storage: Upstash Redis over its REST API, one hash per page: field = comment id, value = JSON.
 // Env: KV_REST_API_URL + KV_REST_API_TOKEN (or UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN),
-// LAB_HOST (e.g. lab.example.com), LAB_COMMENTS_ADMIN_TOKEN for resolving and deleting.
+// LAB_HOST (e.g. lab.example.com), LAB_COMMENTS_ADMIN_TOKEN and LAB_ADMINS for resolving and deleting (see admins()).
 
 const LAB_HOST = process.env.LAB_HOST || '';
 const MAX = { name: 60, text: 2000, path: 300, selector: 600, context: 400, perPage: 500 };
@@ -42,10 +42,40 @@ function fromLab(request) {
   return (LAB_HOST && hostOf(request).split(':')[0] === LAB_HOST) || process.env.LAB_COMMENTS_ALLOW_ANY_HOST === '1';
 }
 
-const isAdmin = (request) => {
-  const expected = process.env.LAB_COMMENTS_ADMIN_TOKEN;
-  return Boolean(expected) && request.headers.get('x-lab-admin') === expected;
+// Admins. LAB_COMMENTS_ADMIN_TOKEN is the owner's key: every page.
+// LAB_ADMINS gives people their own key, comma-separated name=key, optionally @/slug (or @/a+/b) to limit it to those paths:
+//   LAB_ADMINS="anna=<key>@/anna, sam=<key>@/sam+/acme, mia=<key>"
+// Keys are 16+ characters (openssl rand -hex 16). Change or remove an entry and redeploy to take admin away.
+function admins() {
+  const list = [];
+  if (process.env.LAB_COMMENTS_ADMIN_TOKEN) list.push({ name: 'owner', key: process.env.LAB_COMMENTS_ADMIN_TOKEN, paths: null });
+  for (const entry of (process.env.LAB_ADMINS || '').split(',')) {
+    const m = entry.trim().match(/^([^=\s]+)=([^@\s]{16,})(?:@(\S+))?$/);
+    if (!m) continue;
+    const paths = m[3] ? m[3].split('+').map((p) => '/' + p.replace(/^\/+|\/+$/g, '')).filter((p) => p !== '/') : null;
+    list.push({ name: m[1], key: m[2], paths: paths && paths.length ? paths : null });
+  }
+  return list;
+}
+
+const sameKey = (a, b) => {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 };
+
+// The admin this request speaks for on this page, or null.
+function adminFor(request, path) {
+  const sent = request.headers.get('x-lab-admin');
+  if (!sent) return null;
+  const admin = admins().find((a) => sameKey(a.key, sent));
+  if (!admin) return null;
+  if (admin.paths && !admin.paths.some((p) => path === p || path.startsWith(p + '/'))) return null;
+  return admin;
+}
+
+const isAdmin = (request, path) => Boolean(adminFor(request, path));
 
 const clean = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
 const num = (value) => (Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : 0);
@@ -119,7 +149,7 @@ export async function GET(request) {
     .filter(Boolean)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   if (new URL(request.url).searchParams.get('format') === 'text') return text(asText(path, comments, hostOf(request)));
-  return json({ comments, admin: isAdmin(request) });
+  return json({ comments, admin: isAdmin(request, path) });
 }
 
 const text = (body) =>
@@ -214,7 +244,8 @@ export async function POST(request) {
 
   // Resolve / reopen / delete: admin only.
   if (body.action === 'resolve' || body.action === 'reopen' || body.action === 'delete') {
-    if (!isAdmin(request)) return json({ error: 'forbidden' }, 403);
+    const admin = adminFor(request, path);
+    if (!admin) return json({ error: 'forbidden' }, 403);
     const id = clean(body.id, 40);
     const current = await run('HGET', key, id);
     if (!current) return json({ error: 'not found' }, 404);
@@ -222,7 +253,7 @@ export async function POST(request) {
       await run('HDEL', key, id);
       return json({ ok: true });
     }
-    const comment = { ...JSON.parse(current), resolved: body.action === 'resolve' };
+    const comment = { ...JSON.parse(current), resolved: body.action === 'resolve', resolvedBy: body.action === 'resolve' ? admin.name : undefined };
     await run('HSET', key, id, JSON.stringify(comment));
     return json({ comment });
   }
@@ -239,7 +270,7 @@ export async function POST(request) {
 
   // A light per-IP limit on new comments and replies: LAB_COMMENTS_PER_HOUR (default 60).
   // Only posts that will be stored count; admins (resolve, reopen, delete and their own replies) are not limited.
-  if (!isAdmin(request)) {
+  if (!isAdmin(request, path)) {
     const ip = (request.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
     const hourKey = `lab:rate:${ip}:${Math.floor(Date.now() / 3600000)}`;
     const used = await run('INCR', hourKey);
