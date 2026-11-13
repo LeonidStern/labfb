@@ -1,7 +1,7 @@
 {
   "link": "http://localhost:4390/_lab/agent/bench",
-  "bytes": 1839,
-  "approxTokens": 460,
+  "bytes": 1836,
+  "approxTokens": 459,
   "passed": 8,
   "total": 8,
   "checks": [

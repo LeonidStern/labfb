@@ -171,7 +171,7 @@ const clock = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStar
 
 // Plain text for an agent: <lab host>/_lab/agent/<page path> (see vercel.json).
 // Short lines, one fact each, so tools that summarise pages keep them intact.
-// Numbers match the pins people see: open comments, oldest first.
+// Numbers match the comment cards people see: open comments, oldest first.
 function asText(path, comments, host) {
   const origin = `https://${LAB_HOST || host}`;
   // Continuation lines are indented, so a comment can't start a line that reads like a heading or a field.
@@ -185,7 +185,7 @@ function asText(path, comments, host) {
     `open: ${open.length}${resolved ? ` (plus ${resolved} resolved, not listed)` : ''}`,
     `always up to date: ${origin}/_lab/agent${path}`,
     `json: ${origin}/_lab/api/comments?page=${encodeURIComponent(path)}`,
-    `Numbers match the pins on the page. To find the spot in the source, trust file and text first; the selector may be stale.`,
+    `Numbers match the comment cards. To find the spot in the source, trust file and text first; the selector may be stale.`,
   ];
   open.forEach((c, i) => {
     const a = c.anchor || {};

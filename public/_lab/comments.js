@@ -60,15 +60,17 @@
          [data-lab-comments] element (or on :root). Everything else is mixed from those. */
       :host { all: initial;
         --_bg: var(--lab-bg, #fff); --_fg: var(--lab-fg, #141414);
-        --_accent: var(--lab-accent, #6b57ff); --_accent-fg: var(--lab-accent-fg, #fff);
-        --_radius: var(--lab-radius, 14px);
+        --_accent: var(--lab-accent, #141414); --_accent-fg: var(--lab-accent-fg, #fff);
+        --_radius: var(--lab-radius, 12px);
         --_muted: color-mix(in srgb, var(--_fg) 60%, var(--_bg));
         --_line: color-mix(in srgb, var(--_fg) 13%, var(--_bg));
         --_soft: color-mix(in srgb, var(--_fg) 6%, var(--_bg));
-        --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 10%, transparent), 0 10px 32px rgba(0,0,0,.12);
+        --_hair: .5px solid color-mix(in srgb, var(--_fg) 16%, transparent);
+        --_shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 14%, transparent), 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.08);
         --_ease: cubic-bezier(.2, .8, .2, 1); }
       @media (prefers-color-scheme: dark) {
         :host { --_bg: var(--lab-bg, #1c1c1e); --_fg: var(--lab-fg, #f4f4f5);
+                --_accent: var(--lab-accent, #f4f4f5); --_accent-fg: var(--lab-accent-fg, #141414);
                 --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); }
       }
       * { box-sizing: border-box; font-family: var(--lab-font, 'lab-inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
@@ -79,33 +81,37 @@
       ::selection { background: color-mix(in srgb, var(--_accent) 38%, transparent); color: var(--_fg); }
       button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
       .layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
-      .pin { position: absolute; width: 26px; height: 26px; margin: -26px 0 0 0; border-radius: 50% 50% 50% 3px;
-             background: var(--_accent); border: 0; box-shadow: 0 0 0 2px var(--_bg), 0 2px 10px rgba(0,0,0,.25);
-             display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_accent-fg); font-size: 12px; font-weight: 500;
+      .pin { position: absolute; width: 28px; height: 28px; margin: -28px 0 0 0; border-radius: 14px 14px 14px 2px;
+             background: var(--_bg); border: 0; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent), 0 2px 8px rgba(0,0,0,.16);
+             display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_fg); font-size: 12.5px; font-weight: 500;
              font-variant-numeric: tabular-nums; letter-spacing: .01em; transform-origin: 0 100%;
              transition: transform .16s var(--_ease), box-shadow .16s var(--_ease), opacity .16s; }
-      button.pin:hover { transform: scale(1.08); box-shadow: 0 0 0 2px var(--_bg), 0 4px 14px rgba(0,0,0,.28); }
+      button.pin:hover { transform: scale(1.08); box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 4px 14px rgba(0,0,0,.2); }
       button.pin:active { transform: scale(.96); }
       .pin.in { animation: lab-pin .26s var(--_ease); }
-      .pin.resolved { background: var(--_muted); color: var(--_bg); }
+      /* A new comment lands with one faint halo from its pin. */
+      button.pin.in::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+                        animation: lab-halo .9s cubic-bezier(.2, .7, .3, 1) forwards; }
+      .pin.resolved { color: var(--_muted); }
       .pin.moved { opacity: .5; }
-      .zone { position: absolute; border: 1.5px solid var(--_accent); background: color-mix(in srgb, var(--_accent) 12%, transparent);
+      .zone { position: absolute; border: 1px solid color-mix(in srgb, var(--_accent) 45%, transparent); background: color-mix(in srgb, var(--_accent) 5%, transparent);
               border-radius: var(--_radius); pointer-events: none; }
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
-      .zone.saved { background: color-mix(in srgb, var(--_accent) 7%, transparent); }
+      .zone.saved { background: color-mix(in srgb, var(--_accent) 3%, transparent); }
       .zone.saved.in { animation: lab-settle .36s var(--_ease); }
       .pin.new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
                         background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
       .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--_accent); margin: 0 6px 1px 0; }
       .card { position: absolute; width: 320px; max-width: calc(100vw - 24px); background: var(--_bg); border-radius: var(--_radius);
-              box-shadow: var(--_shadow); padding: 14px 16px 16px; transform-origin: 14px 0; z-index: 1; }
+              box-shadow: var(--_shadow); padding: 12px 14px 14px; transform-origin: 14px 0; z-index: 1; }
       .card.in, .float.in { animation: lab-in .18s var(--_ease); }
       .card.out, .float.out { animation: lab-out .14s ease-in forwards; pointer-events: none; }
-      .item + .item { border-top: 1px solid var(--_line); margin-top: 12px; padding-top: 12px; }
+      .item + .item { border-top: var(--_hair); margin-top: 10px; padding-top: 10px; }
       .meta { display: flex; align-items: baseline; gap: .3em; font-size: 12px; color: var(--_muted); margin-bottom: 3px;
               white-space: nowrap; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
       .meta b { font-weight: 500; font-size: 13px; letter-spacing: .005em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       .meta .dot { flex: none; align-self: center; margin: 0 .2em 0 0; }
+      .meta .num { color: var(--_muted); font-variant-numeric: tabular-nums; margin-right: .15em; }
       .text { white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
       .row { display: flex; gap: 12px; justify-content: flex-end; align-items: center; margin-top: 10px; }
       button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
@@ -116,15 +122,15 @@
       .box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "text send"; align-items: center; column-gap: 8px;
              background: var(--_bg); border-radius: var(--_radius); padding: 7px 7px 7px 14px; transition: box-shadow .15s; }
       .float .box { box-shadow: var(--_shadow); }
-      .float .box:focus-within { box-shadow: var(--_shadow), 0 0 0 1px color-mix(in srgb, var(--_accent) 55%, transparent); }
+      .float .box:focus-within { box-shadow: var(--_shadow), 0 0 0 .5px color-mix(in srgb, var(--_fg) 28%, transparent); }
       .card .box { background: var(--_soft); border-radius: max(calc(var(--_radius) - 4px), 0px); margin: 0 -6px -6px; }
-      .card .box.open { box-shadow: inset 0 0 0 1px var(--_line); }
-      .card .box:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--_accent) 55%, transparent); }
+      .card .box.open { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent); }
+      .card .box:focus-within { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 28%, transparent); }
       .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 10px 8px 8px 14px; }
       .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 4px 0; margin: 0; resize: none;
                       min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; }
       .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
-      .line { grid-area: line; height: 1px; background: var(--_line); margin: 0 -8px 0 -14px; display: none; }
+      .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -8px 0 -14px; display: none; }
       .who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; font-size: 13px; color: var(--_muted); letter-spacing: .005em; }
       .who * { font-size: 13px; }
       .who span { color: var(--_muted); }
@@ -132,7 +138,7 @@
       .who input:focus { color: var(--_fg); }
       .box.open .line { display: block; animation: lab-fade .16s ease-out; }
       .box.open .who { display: flex; animation: lab-fade .16s ease-out; }
-      .send { grid-area: send; width: 28px; height: 28px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+      .send { grid-area: send; width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
               background: var(--_line); color: var(--_muted); display: grid; place-items: center; transition: background .15s, color .15s, transform .15s var(--_ease); }
       .send.ready:hover { transform: scale(1.06); }
       .send.ready:active { transform: scale(.94); }
@@ -159,7 +165,11 @@
       @keyframes lab-fade { from { opacity: 0; } }
       @keyframes lab-in { from { opacity: 0; transform: translateY(4px) scale(.98); } }
       @keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
-      @keyframes lab-pin { from { transform: scale(1.22); } }
+      /* Continuous (Apple-style) corners where the browser draws them; plain rounding elsewhere. */
+      @supports (corner-shape: squircle) { .card, .float .box, .card .box { corner-shape: squircle; border-radius: calc(var(--_radius) * 1.8); } }
+      @keyframes lab-pin { from { transform: scale(1.1); } }
+      @keyframes lab-halo { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_fg) 12%, transparent); }
+                            to { box-shadow: 0 0 0 16px color-mix(in srgb, var(--_fg) 0%, transparent); } }
       @keyframes lab-settle { from { background: color-mix(in srgb, var(--_accent) 16%, transparent);
                                      box-shadow: 0 0 0 5px color-mix(in srgb, var(--_accent) 18%, transparent); }
                               to { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_accent) 0%, transparent); } }
@@ -598,6 +608,8 @@
     store.set(seenKey, [...seen].join(','));
   };
   const repliesOf = (id) => comments.filter((c) => c.parent === id);
+  // Pins show who left them: the first letter of the name.
+  const initial = (name) => [...String(name || '').trim()][0]?.toUpperCase() || '';
   const when = (iso) =>
     new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -610,7 +622,7 @@
   }
 
   const ARROW =
-    '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 13V3.5M3.5 8 8 3.5 12.5 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M8 13V3.5M3.5 8 8 3.5 12.5 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   // One field that grows: a pill while empty, a box with a divider and the name row once you type.
   function composer({ placeholder, onSubmit, autofocus }) {
@@ -734,9 +746,9 @@
         {
           class: `pin${c.resolved ? ' resolved' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${posted === c.id ? ' in' : ''}`,
           type: 'button',
-          title: moved ? `${c.name} · the spot it was pinned to has changed` : c.name,
+          title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${moved ? ' · the spot it was pinned to has changed' : ''}`,
         },
-        c.resolved ? '✓' : String(numberOf(c)),
+        c.resolved ? '✓' : initial(c.name),
       );
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
@@ -762,7 +774,7 @@
       const { left, top, zone } = position(anchor);
       drawZone(zone, 'draft');
       quoted = anchor;
-      const pin = el('div', { class: `pin draft${anim}` });
+      const pin = el('div', { class: `pin draft${anim}` }, initial(store.get('lab-name')));
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
       layer.append(pin);
@@ -795,6 +807,7 @@
       const box = el('div', { class: 'item' });
       const meta = el('div', { class: 'meta' });
       if (fresh.has(item.id)) meta.append(el('span', { class: 'dot', title: 'new' }));
+      if (item === c && !c.resolved) meta.append(el('span', { class: 'num' }, String(numberOf(c))));
       meta.append(el('b', {}, item.name), document.createTextNode(` · ${when(item.createdAt)}`));
       box.append(meta, el('div', { class: 'text' }, item.text));
       card.append(box);
