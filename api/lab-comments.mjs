@@ -119,6 +119,12 @@ function cleanAnchor(a) {
     if (exact) {
       const edge = (v) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').slice(0, 40) : '');
       out.quote = { exact, prefix: edge(a.quote.prefix), suffix: edge(a.quote.suffix) };
+      if (a.quote.line) {
+        out.quote.line = clean(a.quote.line, 200);
+        out.quote.lineNo = int(a.quote.lineNo, 100000);
+        out.quote.lines = int(a.quote.lines, 100000);
+        if (a.quote.label) out.quote.label = clean(a.quote.label, 120);
+      }
     }
   }
   for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k];
@@ -202,7 +208,12 @@ function asText(path, comments, host) {
       lines.push(`spot: ${pct(a.imgX)} across, ${pct(a.imgY)} down`);
       if (a.time !== undefined) lines.push(`time: ${a.time} s after the page opened`);
     } else if (a.kind === 'text' && a.quote) {
-      lines.push(`on: text`, `text: "…${a.quote.prefix}[${a.quote.exact}]${a.quote.suffix}…"`);
+      const q = a.quote;
+      if (q.line) {
+        lines.push(`on: code${q.label ? ` "${q.label}" (search the repo for it)` : ''}`);
+        lines.push(`line: ${q.lineNo}${q.lines ? ` of ${q.lines}` : ''} in the block: ${q.line}`);
+        lines.push(`word: [${q.exact}]`);
+      } else lines.push(`on: text`, `text: "…${q.prefix}[${q.exact}]${q.suffix}…"`);
     } else if (a.context) {
       for (const part of a.context.split(' · ').filter(Boolean)) lines.push(part.startsWith('section:') ? part : `on: ${part}`);
     }

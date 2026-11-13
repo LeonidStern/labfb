@@ -1,0 +1,55 @@
+<title>labfb Benchmark Page</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Same content as bench/site/index.html, for the shared-artifact side of the benchmark. */
+  :root { --bg: #ffffff; --fg: #111111; --muted: #666666; --panel: #f5f5f3; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #111111; --fg: #f2f2f2; --muted: #9a9a9a; --panel: #1c1c1c; color-scheme: dark } }
+  :root[data-theme="dark"] { --bg: #111111; --fg: #f2f2f2; --muted: #9a9a9a; --panel: #1c1c1c; color-scheme: dark }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding-block: 48px 160px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  h1 { font-size: 28px; margin: 0 0 32px; font-weight: 500; }
+  h2 { font-size: 15px; font-weight: 500; color: var(--muted); margin: 40px 0 12px; }
+  img, video { display: block; width: 100%; max-width: 100%; height: auto; border-radius: 8px; background: var(--panel); }
+  pre { margin: 0; padding: 20px; background: var(--panel); border-radius: 8px; font: 14px/1.6 ui-monospace, Menlo, monospace; overflow-x: auto; }
+  figure { margin: 0; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; }
+</style>
+<main>
+  <h1>Benchmark page</h1>
+  <section>
+    <h2>Photo</h2>
+    <figure><img src="media/shapes.jpg" width="2400" height="1600" alt="three shapes"></figure>
+  </section>
+  <section>
+    <h2>Code</h2>
+    <figure><pre><code>// Button styles used across the site.
+export type Variant = &#x27;primary&#x27; | &#x27;ghost&#x27;;
+
+export const base = {
+  fontFamily: &#x27;Inter, system-ui, sans-serif&#x27;,
+  fontSize: 15,
+  lineHeight: 1.2,
+};
+
+export const variants: Record&lt;Variant, object&gt; = {
+  primary: {
+    background: &#x27;#111&#x27;,
+    color: &#x27;#fff&#x27;,
+    padding: &#x27;10px 18px&#x27;,
+    borderRadius: 999,
+  },
+  ghost: {
+    background: &#x27;transparent&#x27;,
+    color: &#x27;#111&#x27;,
+    padding: &#x27;10px 18px&#x27;,
+    borderRadius: 999,
+    border: &#x27;1px solid #ddd&#x27;,
+  },
+};
+</code></pre><figcaption>src/button.ts</figcaption></figure>
+  </section>
+  <section>
+    <h2>Video</h2>
+    <video src="media/countdown.webm" width="1280" height="720" muted playsinline controls preload="auto"></video>
+  </section>
+</main>

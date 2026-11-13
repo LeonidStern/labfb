@@ -1,0 +1,44 @@
+{
+  "link": "https://claude.ai/artifact/JXZDY3XNobqAFt5nYFtfvY",
+  "status": 200,
+  "bytes": 37362,
+  "visibleText": "Claude Artifact Content is user-generated and unverified.",
+  "commentsFound": 0,
+  "passed": 0,
+  "total": 8,
+  "checks": [
+    {
+      "name": "photo: file named",
+      "ok": false
+    },
+    {
+      "name": "photo: spot inside the circle, in original pixels",
+      "ok": false
+    },
+    {
+      "name": "code: file named",
+      "ok": false
+    },
+    {
+      "name": "code: line number is the right one",
+      "ok": false
+    },
+    {
+      "name": "code: line text matches the file",
+      "ok": false,
+      "got": "0 lines in the file read the same"
+    },
+    {
+      "name": "video: file named",
+      "ok": false
+    },
+    {
+      "name": "video: time within the second the box is on screen",
+      "ok": false
+    },
+    {
+      "name": "video: spot inside the red box, in frame pixels",
+      "ok": false
+    }
+  ]
+}

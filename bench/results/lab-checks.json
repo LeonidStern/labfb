@@ -1,0 +1,49 @@
+{
+  "link": "http://localhost:4390/_lab/agent/bench",
+  "bytes": 1839,
+  "approxTokens": 460,
+  "passed": 8,
+  "total": 8,
+  "checks": [
+    {
+      "name": "photo: file named",
+      "ok": true,
+      "got": "on: image \"shapes\" (search the repo's src/ and public/ for it)"
+    },
+    {
+      "name": "photo: spot inside the circle, in original pixels",
+      "ok": true,
+      "got": "spot in original: 79% across, 25% down of 2400×1600"
+    },
+    {
+      "name": "code: file named",
+      "ok": true,
+      "got": "on: code \"src/button.ts\" (search the repo for it)"
+    },
+    {
+      "name": "code: line number is the right one",
+      "ok": true,
+      "got": "line: 20 of 24 in the block: padding: '10px 18px',"
+    },
+    {
+      "name": "code: line text matches the file",
+      "ok": true,
+      "got": "2 lines in the file read the same"
+    },
+    {
+      "name": "video: file named",
+      "ok": true,
+      "got": "on: video \"countdown\" (search the repo's src/ and public/ for it)"
+    },
+    {
+      "name": "video: time within the second the box is on screen",
+      "ok": true,
+      "got": "video time: 0:05.4"
+    },
+    {
+      "name": "video: spot inside the red box, in frame pixels",
+      "ok": true,
+      "got": "spot in original: 84% across, 19% down of 1280×720"
+    }
+  ]
+}

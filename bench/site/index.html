@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>labfb benchmark</title>
+<style>
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #111; background: #fff; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 24px 160px; }
+  h1 { font-size: 28px; margin: 0 0 32px; font-weight: 500; }
+  h2 { font-size: 15px; font-weight: 500; color: #666; margin: 40px 0 12px; }
+  img, video { display: block; width: 100%; height: auto; border-radius: 8px; background: #eee; }
+  pre { margin: 0; padding: 20px; background: #f5f5f3; border-radius: 8px; font: 14px/1.6 ui-monospace, Menlo, monospace; overflow: auto; }
+  figcaption { font-size: 13px; color: #888; margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Benchmark page</h1>
+  <section data-lab="photo">
+    <h2>Photo</h2>
+    <figure style="margin:0"><img src="media/shapes.jpg" width="2400" height="1600" alt="three shapes"></figure>
+  </section>
+  <section data-lab="code">
+    <h2>Code</h2>
+    <figure style="margin:0"><pre><code>// Button styles used across the site.
+export type Variant = &#x27;primary&#x27; | &#x27;ghost&#x27;;
+
+export const base = {
+  fontFamily: &#x27;Inter, system-ui, sans-serif&#x27;,
+  fontSize: 15,
+  lineHeight: 1.2,
+};
+
+export const variants: Record&lt;Variant, object&gt; = {
+  primary: {
+    background: &#x27;#111&#x27;,
+    color: &#x27;#fff&#x27;,
+    padding: &#x27;10px 18px&#x27;,
+    borderRadius: 999,
+  },
+  ghost: {
+    background: &#x27;transparent&#x27;,
+    color: &#x27;#111&#x27;,
+    padding: &#x27;10px 18px&#x27;,
+    borderRadius: 999,
+    border: &#x27;1px solid #ddd&#x27;,
+  },
+};
+</code></pre><figcaption>src/button.ts</figcaption></figure>
+  </section>
+  <section data-lab="video">
+    <h2>Video</h2>
+    <video src="media/countdown.webm" width="1280" height="720" muted playsinline controls preload="auto"></video>
+  </section>
+</main>
+<script src="/_lab/comments.js" defer></script>
+</body>
+</html>

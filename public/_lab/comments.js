@@ -277,11 +277,32 @@
     const before = full.slice(0, full.indexOf(text) + a);
     const after = full.slice(full.indexOf(text) + b);
     const squash = (v) => v.replace(/\s+/g, ' ');
-    return {
+    const quote = {
       exact: short(text.slice(a, b), 80),
       prefix: squash(before.slice(-80)).replace(/^\s+/, '').slice(-40),
       suffix: squash(after.slice(0, 80)).replace(/\s+$/, '').slice(0, 40),
     };
+    // Code (or any preformatted text): the whole line, its number in the block, and the block's label
+    // (a figcaption, data-file, title or aria-label nearby), so an agent can open the file at that line.
+    const pre = node.parentElement?.closest('pre, [data-file]') ||
+      (/^pre/.test(getComputedStyle(node.parentElement).whiteSpace) ? node.parentElement : null);
+    if (pre) {
+      const r = document.createRange();
+      r.setStart(pre, 0);
+      r.setEnd(node, offset);
+      const upto = r.toString();
+      const all = pre.textContent;
+      const from = upto.lastIndexOf('\n') + 1;
+      const to = all.indexOf('\n', upto.length);
+      quote.line = short(all.slice(from, to < 0 ? undefined : to).trim(), 200);
+      quote.lineNo = upto.split('\n').length;
+      quote.lines = all.replace(/\n$/, '').split('\n').length;
+      const holder = pre.closest('[data-file], figure') || pre;
+      const label = holder.getAttribute('data-file') || holder.querySelector?.('figcaption')?.textContent ||
+        pre.getAttribute('title') || pre.getAttribute('aria-label') || '';
+      if (label.trim()) quote.label = short(label.trim(), 120);
+    }
+    return quote;
   }
 
   function openingTag(node) {
