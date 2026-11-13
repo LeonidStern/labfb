@@ -123,4 +123,6 @@ vercel.json               API and agent rewrites, one example designer
 prompts/                  for designers' agents
 ```
 
+How fast the pages open and how well agents read the comments: [BENCHMARKS.md](BENCHMARKS.md).
+
 MIT. Inter is by The Inter Project Authors, under the SIL Open Font License 1.1 (`public/_lab/fonts/OFL.txt`). Made by [OOZE](https://ooze.design).
