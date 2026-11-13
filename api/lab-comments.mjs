@@ -36,9 +36,10 @@ function pagePath(raw) {
   return raw.replace(/\/+$/, '') || null;
 }
 
+const hostOf = (request) => (request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(',')[0].trim();
+
 function fromLab(request) {
-  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || '';
-  return (LAB_HOST && host.split(':')[0] === LAB_HOST) || process.env.LAB_COMMENTS_ALLOW_ANY_HOST === '1';
+  return (LAB_HOST && hostOf(request).split(':')[0] === LAB_HOST) || process.env.LAB_COMMENTS_ALLOW_ANY_HOST === '1';
 }
 
 const isAdmin = (request) => {
@@ -117,7 +118,7 @@ export async function GET(request) {
     })
     .filter(Boolean)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  if (new URL(request.url).searchParams.get('format') === 'text') return text(asText(path, comments));
+  if (new URL(request.url).searchParams.get('format') === 'text') return text(asText(path, comments, hostOf(request)));
   return json({ comments, admin: isAdmin(request) });
 }
 
@@ -140,21 +141,24 @@ const clock = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStar
 // Plain text for an agent: <lab host>/_lab/agent/<page path> (see vercel.json).
 // Short lines, one fact each, so tools that summarise pages keep them intact.
 // Numbers match the pins clients see: open comments, oldest first.
-function asText(path, comments) {
+function asText(path, comments, host) {
+  const origin = `https://${LAB_HOST || host}`;
+  // Continuation lines are indented, so a comment can't start a line that reads like a heading or a field.
+  const body = (v) => v.replace(/\r?\n/g, '\n  ');
   const roots = comments.filter((c) => !c.parent);
   const open = roots.filter((c) => !c.resolved);
   const resolved = roots.length - open.length;
   const lines = [
     `# Client comments`,
-    `page: https://${LAB_HOST}${path}`,
+    `page: ${origin}${path}`,
     `open: ${open.length}${resolved ? ` (plus ${resolved} resolved, not listed)` : ''}`,
-    `always up to date: https://${LAB_HOST}/_lab/agent${path}`,
-    `json: https://${LAB_HOST}/_lab/api/comments?page=${encodeURIComponent(path)}`,
+    `always up to date: ${origin}/_lab/agent${path}`,
+    `json: ${origin}/_lab/api/comments?page=${encodeURIComponent(path)}`,
     `Numbers match the pins on the page. To find the spot in the source, trust file and text first; the selector may be stale.`,
   ];
   open.forEach((c, i) => {
     const a = c.anchor || {};
-    lines.push('', `## ${i + 1}. ${c.name} · ${stamp(c.createdAt)} · id ${c.id}`, `comment: ${c.text}`);
+    lines.push('', `## ${i + 1}. ${c.name} · ${stamp(c.createdAt)} · id ${c.id}`, `comment: ${body(c.text)}`);
     if (a.kind === 'image' || a.kind === 'video' || a.kind === 'background') {
       lines.push(`on: ${a.kind}${a.file ? ` "${a.file}" (search the repo's src/ and public/ for it)` : ''}`);
       if (a.src) lines.push(`src: ${a.src}`);
@@ -188,7 +192,7 @@ function asText(path, comments) {
     if (a.width) lines.push(`viewport: ${a.width}${a.height ? `×${a.height}` : 'px wide'}${a.dpr ? ` @${a.dpr}x` : ''}`);
     if (a.build) lines.push(`build: ${a.build}`);
     lines.push(`selector (at comment time): ${a.selector || 'body'}`);
-    for (const r of comments.filter((r) => r.parent === c.id)) lines.push(`reply: ${r.name} · ${stamp(r.createdAt)}: ${r.text}`);
+    for (const r of comments.filter((r) => r.parent === c.id)) lines.push(`reply: ${r.name} · ${stamp(r.createdAt)}: ${body(r.text)}`);
   });
   return lines.join('\n') + '\n';
 }
@@ -227,22 +231,25 @@ export async function POST(request) {
   const text = clean(body.text, MAX.text);
   if (!name || !text) return json({ error: 'name and text are required' }, 400);
 
-  // A light per-IP limit on new comments and replies: LAB_COMMENTS_PER_HOUR (default 60).
-  const ip = (request.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
-  const hourKey = `lab:rate:${ip}:${Math.floor(Date.now() / 3600000)}`;
-  const used = await run('INCR', hourKey);
-  if (used === 1) await run('EXPIRE', hourKey, 3600);
-  if (used > (Number(process.env.LAB_COMMENTS_PER_HOUR) || 60)) return json({ error: 'too many comments, try again later' }, 429);
-
   const count = await run('HLEN', key);
   if (count >= MAX.perPage) return json({ error: 'too many comments on this page' }, 429);
 
   const parent = body.parent ? clean(body.parent, 40) : null;
   if (parent && !(await run('HEXISTS', key, parent))) return json({ error: 'thread not found' }, 404);
 
+  // A light per-IP limit on new comments and replies: LAB_COMMENTS_PER_HOUR (default 60).
+  // Only posts that will be stored count; admins (resolve, reopen, delete and their own replies) are not limited.
+  if (!isAdmin(request)) {
+    const ip = (request.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
+    const hourKey = `lab:rate:${ip}:${Math.floor(Date.now() / 3600000)}`;
+    const used = await run('INCR', hourKey);
+    if (used === 1) await run('EXPIRE', hourKey, 3600);
+    if (used > (Number(process.env.LAB_COMMENTS_PER_HOUR) || 60)) return json({ error: 'too many comments, try again later' }, 429);
+  }
+
   const anchor = body.anchor || {};
   const comment = {
-    id: crypto.randomUUID().slice(0, 12),
+    id: crypto.randomUUID().replace(/-/g, '').slice(0, 12),
     parent,
     name,
     text,

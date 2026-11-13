@@ -13,4 +13,4 @@ Add the lab comment layer to every page of this site.
 Optional, makes comments more precise for agents:
 6. Add `<meta name="lab-build" content="...">` to the layout with the short commit the page was built from (in Astro frontmatter: `const build = (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7);`, render the meta only if set).
 7. Give key blocks a stable `data-lab="name"` (e.g. data-lab="hero", data-lab="pricing"); comments report the nearest one, so feedback is easy to find in the source.
-8. Keep image file names meaningful (clutch-hero.jpg, not IMG_2031.jpg): comments report the file name.
+8. Keep image file names meaningful (hero-gradient.jpg, not IMG_2031.jpg): comments report the file name.

@@ -159,8 +159,8 @@
   const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
   const short = (v, n) => (v || '').replace(/\s+/g, ' ').trim().slice(0, n);
 
-  // A source-file hint from a (possibly proxied, hashed or optimised) image URL: "clutch-1" from
-  // /_astro/clutch-1.Bx3kd9_Z.webp, /_image?href=..., /_vercel/image?url=..., /media/<id>/w800.webp.
+  // A source-file hint from a (possibly proxied, hashed or optimised) image URL: "hero-1" from
+  // /_astro/hero-1.Bx3kd9_Z.webp, /_image?href=..., /_vercel/image?url=..., /media/<id>/w800.webp.
   function fileHint(url) {
     if (!url || url.startsWith('data:')) return '';
     try {
@@ -352,7 +352,8 @@
     const left = anchor.docX * docWidth();
     const top = anchor.docY;
     const zone = anchor.docW ? { left, top, width: anchor.docW, height: anchor.docH } : null;
-    return { left, top, zone, moved: true };
+    // Anchored to the page itself (a margin, or an area wider than any element): nothing has moved.
+    return { left, top, zone, moved: Boolean(anchor.selector) && anchor.selector !== 'body' };
   }
 
   const drawZone = (box, cls) => {
@@ -425,15 +426,28 @@
   // ---------- data ----------
   const headers = () => ({ 'content-type': 'application/json', ...(adminToken ? { 'x-lab-admin': adminToken } : {}) });
 
+  // The API answers 404 anywhere but on the lab host. A script loaded with a relative src can't tell the
+  // lab host from the deployment's own address, so the first answer decides: no API here, no layer.
+  let gone = false;
+  let loaded = false;
   async function load() {
     try {
       const res = await fetch(`${API}?page=${encodeURIComponent(page)}`, { headers: headers(), cache: 'no-store' });
+      if (res.status === 404 && !loaded && script?.dataset.enable !== 'always') {
+        gone = true;
+        on = false;
+        document.documentElement.classList.remove('lab-pinning');
+        host.remove();
+        fonts.remove();
+        return;
+      }
       if (!res.ok) throw new Error(res.status);
       const data = await res.json();
       comments = data.comments || [];
       isAdmin = Boolean(data.admin);
+      loaded = true;
     } catch {
-      comments = [];
+      // Keep what is already on screen when a refresh fails.
     }
     render();
   }
@@ -449,6 +463,7 @@
   // The same text an agent gets from <lab host>/_lab/agent<page>, optionally only one comment.
   async function agentText(number) {
     const res = await fetch(`${API}?page=${encodeURIComponent(page)}&format=text`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status);
     const textValue = await res.text();
     if (!number) return textValue;
     const [head, ...blocks] = textValue.split('\n## ');
@@ -627,7 +642,8 @@
     });
 
     if (draft) {
-      const { left, top, zone } = position(draft.anchor);
+      const { anchor } = draft;
+      const { left, top, zone } = position(anchor);
       drawZone(zone, 'draft');
       const pin = el('div', { class: 'pin draft' });
       pin.style.left = `${left}px`;
@@ -639,9 +655,9 @@
           placeholder: 'add a comment',
           autofocus: true,
           onSubmit: async (name, text) => {
-            const { comment } = await send({ name, text, anchor: draft.anchor });
+            const { comment } = await send({ name, text, anchor });
             comments.push(comment);
-          markSeen([comment]);
+            markSeen([comment]);
             draft = null;
             openId = comment.id;
             render();
@@ -683,7 +699,9 @@
       });
       const copyOne = el('button', { class: 'btn', type: 'button' }, 'copy for agent');
       copyOne.addEventListener('click', () => copy(agentText(numberOf(c)), copyOne));
-      actions.append(copyOne, resolve, del);
+      // Resolved comments have no number and aren't in the agent text.
+      if (!c.resolved) actions.append(copyOne);
+      actions.append(resolve, del);
       card.append(actions);
     }
     card.append(
@@ -720,6 +738,7 @@
   const typing = (e) =>
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
   document.addEventListener('keydown', (e) => {
+    if (gone) return;
     if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e)) {
       e.preventDefault();
       setOn(!on);
