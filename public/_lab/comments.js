@@ -7,7 +7,7 @@
  *   <script src="https://lab.example.com/_lab/comments.js" defer></script>
  * The layer only turns on when the page is opened on the host the script is loaded from (or data-host),
  * so the deployment's own address and local dev stay clean. data-enable="always" turns it on everywhere.
- * Admin (resolve / delete / copy for agent): open any page once with ?lab-admin=<LAB_COMMENTS_ADMIN_TOKEN>; it is kept in this browser.
+ * Admin (resolve / delete / copy agent link): open any page once with ?lab-admin=<LAB_COMMENTS_ADMIN_TOKEN>; it is kept in this browser.
  */
 (() => {
   const script = document.currentScript;
@@ -170,7 +170,7 @@
     <div class="layer"></div>
     <div class="hint" hidden>click to comment · drag to mark an area · c to hide</div>
     <div class="bar">
-      <button class="secondary copy-all" type="button" hidden>copy for agent</button>
+      <button class="secondary copy-all" type="button" hidden>copy link</button>
       <button class="toggle" type="button"></button>
     </div>`;
   const layer = root.querySelector('.layer');
@@ -537,15 +537,8 @@
   }
 
   // ---------- copy for an agent ----------
-  // The same text an agent gets from <lab host>/_lab/agent<page>, optionally only one comment.
-  async function agentText(number) {
-    const res = await fetch(`${API}?page=${encodeURIComponent(page)}&format=text`, { cache: 'no-store' });
-    if (!res.ok) throw new Error(res.status);
-    const textValue = await res.text();
-    if (!number) return textValue;
-    const [head, ...blocks] = textValue.split('\n## ');
-    return `${head.trim()}\n\n## ${blocks.find((b) => b.startsWith(`${number}. `)) || ''}`.trim() + '\n';
-  }
+  // The link an agent reads: every open comment on this page as plain text.
+  const agentLink = () => new URL('/_lab/agent' + page, new URL(API, location.href)).href;
 
   async function copy(textPromise, button) {
     const textValue = await textPromise;
@@ -802,10 +795,6 @@
         openId = null;
         render();
       });
-      const copyOne = el('button', { class: 'btn', type: 'button' }, 'copy for agent');
-      copyOne.addEventListener('click', () => copy(agentText(numberOf(c)), copyOne));
-      // Resolved comments have no number and aren't in the agent text.
-      if (!c.resolved) actions.append(copyOne);
       actions.append(resolve, del);
       card.append(actions);
     }
@@ -839,7 +828,7 @@
     render();
   };
   toggleBtn.addEventListener('click', () => setOn(!on));
-  copyBtn.addEventListener('click', () => copy(agentText(), copyBtn));
+  copyBtn.addEventListener('click', () => copy(agentLink(), copyBtn));
   const typing = (e) =>
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
   document.addEventListener('keydown', (e) => {
