@@ -1,6 +1,6 @@
 # labfb
 
-Pin comments on live pages. Clients click anywhere and type a name, no account. Your agent reads every comment from one link.
+Pin comments on live pages. Anyone with the link clicks anywhere and types a name, no account. Then press "copy link" and paste it into your agent. That's it: it reads every comment and goes to the file.
 
 ![Comments pinned on a demo page](docs/comments.png)
 
@@ -24,7 +24,7 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
      { "source": "/<slug>/:path*", "destination": "https://<their-project>.vercel.app/<slug>/:path*" }
    - add this to the site's shared layout, before </body>:
      <script src="https://<lab domain>/_lab/comments.js" defer></script>
-   - put client pages at /<slug>/<project>/<secret>/<page>, where <secret> is 10 random characters per project; mark them noindex and link to them from nowhere
+   - put pages at /<slug>/<project>/<secret>/<page>, where <secret> is 10 random characters per project; mark them noindex and link to them from nowhere
 6. Open https://<lab domain>/_lab/demo, press c, pin a comment, and check that
    https://<lab domain>/_lab/agent/_lab/demo shows it as text.
 ```

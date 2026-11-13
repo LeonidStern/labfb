@@ -1,4 +1,4 @@
-// Pin comments for client pages on a lab domain (see public/_lab/comments.js).
+// Pin comments for pages on a lab domain (see public/_lab/comments.js).
 // https://github.com/leonidstern/labfb · MIT
 // Storage: Upstash Redis over its REST API, one hash per page: field = comment id, value = JSON.
 // Env: KV_REST_API_URL + KV_REST_API_TOKEN (or UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN),
@@ -165,7 +165,7 @@ const clock = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStar
 
 // Plain text for an agent: <lab host>/_lab/agent/<page path> (see vercel.json).
 // Short lines, one fact each, so tools that summarise pages keep them intact.
-// Numbers match the pins clients see: open comments, oldest first.
+// Numbers match the pins people see: open comments, oldest first.
 function asText(path, comments, host) {
   const origin = `https://${LAB_HOST || host}`;
   // Continuation lines are indented, so a comment can't start a line that reads like a heading or a field.
@@ -174,7 +174,7 @@ function asText(path, comments, host) {
   const open = roots.filter((c) => !c.resolved);
   const resolved = roots.length - open.length;
   const lines = [
-    `# Client comments`,
+    `# Comments`,
     `page: ${origin}${path}`,
     `open: ${open.length}${resolved ? ` (plus ${resolved} resolved, not listed)` : ''}`,
     `always up to date: ${origin}/_lab/agent${path}`,
