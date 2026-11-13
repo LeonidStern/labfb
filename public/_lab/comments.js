@@ -1,6 +1,6 @@
 /*
  * lab comments: clients click anywhere on a lab page to pin a comment. No login, just a name.
- * https://github.com/leonidstern/lab · MIT
+ * https://github.com/leonidstern/labfb · MIT
  * Comments are off by default; the bar button or c turns them on (remembered per browser). When on, click anywhere that isn't a link or control to pin one (alt/option-click pins on those too). c (or the bar button) hides
  * and shows them; esc or a click outside closes an open comment. Dragging (mouse/pen) marks an area instead of a point.
  * Include on a page served through your lab domain:

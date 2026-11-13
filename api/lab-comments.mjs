@@ -1,5 +1,5 @@
 // Pin comments for client pages on a lab domain (see public/_lab/comments.js).
-// https://github.com/leonidstern/lab · MIT
+// https://github.com/leonidstern/labfb · MIT
 // Storage: Upstash Redis over its REST API, one hash per page: field = comment id, value = JSON.
 // Env: KV_REST_API_URL + KV_REST_API_TOKEN (or UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN),
 // LAB_HOST (e.g. lab.example.com), LAB_COMMENTS_ADMIN_TOKEN for resolving and deleting.

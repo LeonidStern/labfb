@@ -1,6 +1,6 @@
-# lab
+# labfb
 
-One domain for client pages from many designers, with pin comments clients can leave without an account and agents can read as plain text.
+Lab feedback. One domain for client pages from many designers, with pin comments clients can leave without an account and agents can read as plain text.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/comments-dark.png">
