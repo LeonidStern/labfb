@@ -22,11 +22,12 @@ The only text in the artifact response is "Claude Artifact Content is user-gener
 
 **Agents doing the work** (given the link and the repo, asked for file + line / pixel / second; `score-agent.mjs`)
 
-| agent | lab link | artifact link |
+| agent | lab link | artifact link (no login) |
 |---|---|---|
+| Claude Fable 5.2 | 7 / 7, all high confidence | 0 / 7: found 0 comments, "a 37 KB generic app shell" |
 | Claude Sonnet | 7 / 7 | — |
 | Claude Haiku | 7 / 7 | — |
 
-Both found the red circle at 1896,400 of 2400×1600, line 20 (not 14), and the red box at 5.4 s, 1075,137 of 1280×720. Answers are in `results/`.
+All three found the red circle at 1896,400 of 2400×1600, line 20 (not 14), and the red box at 5.4 s, 1075,137 of 1280×720. Answers are in `results/`.
 
 The benchmark also caught a gap: comments on code used to record only the nearby words, so an agent couldn't tell line 14 from line 20. They now record the line, its number and the block's label.
