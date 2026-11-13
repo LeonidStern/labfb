@@ -64,6 +64,23 @@ Script options: `data-host` (if the script is served from another host than the 
 
 The layer is set in [Inter](https://rsms.me/inter/) (400 and 500, latin), served from `public/_lab/fonts/` next to the script, with the system font as fallback.
 
+## Theme
+
+The layer follows the visitor's light or dark setting and takes its colours from a few CSS custom properties. Set them on the layer's host element (or on `:root`) in the site's own CSS:
+
+```css
+[data-lab-comments] {
+  --lab-accent: #ff5a1f;     /* pins, send button, marked areas. default #6b57ff */
+  --lab-accent-fg: #fff;     /* text on the accent. default #fff */
+  --lab-bg: #fff;            /* cards, bar, hint. default #fff, dark: #1c1c1e */
+  --lab-fg: #141414;         /* text. default #141414, dark: #f4f4f5 */
+  --lab-radius: 14px;        /* cards and fields. default 14px */
+  --lab-font: 'Inter', sans-serif;
+}
+```
+
+Borders, muted text and field backgrounds are mixed from `--lab-bg` and `--lab-fg`, so two colours are enough. Setting `--lab-bg` and `--lab-fg` also pins the layer to one look whatever the visitor's setting; set both, not one.
+
 ## Admin
 
 Open any lab page once with `?lab-admin=<LAB_COMMENTS_ADMIN_TOKEN>`. The token stays in that browser and is removed from the URL. Admins see **resolve**, **delete** and **copy for agent** on every comment.
