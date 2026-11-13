@@ -94,8 +94,11 @@
                         animation: lab-halo .9s cubic-bezier(.2, .7, .3, 1) forwards; }
       .pin.resolved { color: var(--_muted); }
       .pin.moved { opacity: .5; }
-      .zone { position: absolute; border: 1.5px dotted color-mix(in srgb, var(--_accent) 55%, transparent); background: color-mix(in srgb, var(--_accent) 5%, transparent);
+      .zone { position: absolute; background: color-mix(in srgb, var(--_accent) 5%, transparent);
               border-radius: var(--_radius); pointer-events: none; }
+      .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+      .zone rect { fill: none; stroke: color-mix(in srgb, var(--_accent) 60%, transparent); stroke-width: 2; stroke-linecap: round;
+                   stroke-dasharray: 0 9; rx: var(--_radius); ry: var(--_radius); }
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
       .zone.saved { background: color-mix(in srgb, var(--_accent) 3%, transparent); }
       .zone.saved.in { animation: lab-settle .36s var(--_ease); }
@@ -466,9 +469,15 @@
     else CSS.highlights.delete('lab-quote');
   };
 
+  // The area's outline: round dots with room between them (CSS dotted borders can't space their dots).
+  const zoneEl = (cls) => {
+    const z = el('div', { class: `zone ${cls}` });
+    z.innerHTML = '<svg aria-hidden="true"><rect width="100%" height="100%"/></svg>';
+    return z;
+  };
   const drawZone = (box, cls) => {
     if (!box) return;
-    const z = el('div', { class: `zone ${cls}` });
+    const z = zoneEl(cls);
     Object.assign(z.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
     layer.append(z);
   };
@@ -928,7 +937,7 @@
         drag.active = true;
         getSelection?.()?.removeAllRanges();
         document.documentElement.classList.add('lab-dragging');
-        liveZone = el('div', { class: 'zone draft live' });
+        liveZone = zoneEl('draft live');
         layer.append(liveZone);
       }
       if (!drag.active) return;
