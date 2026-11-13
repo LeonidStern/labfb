@@ -57,7 +57,7 @@
   root.innerHTML = `
     <style>
       :host { all: initial; }
-      * { box-sizing: border-box; font-family: var(--lab-font, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
+      * { box-sizing: border-box; font-family: var(--lab-font, 'lab-inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
           font-size: 15px; line-height: 1.35; font-weight: 400; color: #000; letter-spacing: 0; -webkit-font-smoothing: antialiased; }
       .layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
       .pin { position: absolute; width: 28px; height: 28px; margin: -28px 0 0 0; border-radius: 50% 50% 50% 4px;
@@ -856,9 +856,14 @@
   });
   if ('ResizeObserver' in window) new ResizeObserver(reflow).observe(document.body);
 
-  // Optional own font: data-font="Inter" (the page must already load it, or add data-font-url to a woff2).
+  // Font: Inter (400 and 500, latin) from the fonts folder next to this script, under a private family name so it
+  // can't clash with the page's fonts. @font-face is ignored inside a shadow root, so it goes in the document.
+  // Other fonts: --lab-font on the host element, data-font="Name" (a font the page already loads) or data-font-url (a woff2).
   const fonts = document.createElement('style');
-  fonts.textContent = '';
+  const fontFile = (weight) => new URL(`fonts/inter-latin-${weight}.woff2`, script?.src || new URL('/_lab/', location.href));
+  fonts.textContent = [400, 500]
+    .map((w) => `@font-face{font-family:'lab-inter';font-style:normal;font-weight:${w};font-display:swap;src:url('${fontFile(w)}') format('woff2');}`)
+    .join('');
   if (script?.dataset.fontUrl)
     fonts.textContent += `@font-face{font-family:'lab comments';font-display:swap;src:url('${new URL(script.dataset.fontUrl, script.src || location.href)}') format('woff2');}`;
   const fontName = script?.dataset.fontUrl ? 'lab comments' : script?.dataset.font;

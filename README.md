@@ -55,12 +55,14 @@ The proxy can't follow redirects. If `/<slug>` on their side answers 307 to some
 Paste [`prompts/add-comments.md`](prompts/add-comments.md) into the site's agent. In short:
 
 - the script tag above in the shared layout
-- a CSP that allows `script-src` and `connect-src` for the lab domain
+- a CSP that allows `script-src`, `connect-src` and `font-src` for the lab domain
 - optional `<meta name="lab-build" content="<short commit>">` so comments say which build they were left on
 - optional `data-lab="hero"` on key blocks, so comments name the section
 - meaningful image file names (`hero-gradient.jpg`, not `IMG_2031.jpg`): comments report them
 
-Script options: `data-host` (if the script is served from another host than the pages), `data-api`, `data-font="Inter"` (a font the page already loads) or `data-font-url` (a woff2 to load), `data-enable="always"` (on everywhere, for testing).
+Script options: `data-host` (if the script is served from another host than the pages), `data-api`, `data-font="Name"` (a font the page already loads) or `data-font-url` (a woff2 to load), `data-enable="always"` (on everywhere, for testing).
+
+The layer is set in [Inter](https://rsms.me/inter/) (400 and 500, latin), served from `public/_lab/fonts/` next to the script, with the system font as fallback.
 
 ## Admin
 
@@ -97,10 +99,11 @@ JSON is at `/_lab/api/comments?page=<page path>`.
 
 ```
 public/_lab/comments.js   the comment layer: one file, no dependencies, shadow DOM
+public/_lab/fonts/        Inter 400 and 500 (latin, woff2) and its license (SIL OFL 1.1)
 public/_lab/demo.html     demo page
 api/lab-comments.mjs      GET comments (JSON or agent text), POST comment / reply / resolve / delete
 vercel.json               API and agent rewrites, one example designer
 prompts/                  for designers' agents
 ```
 
-MIT. Made by [OOZE](https://ooze.design).
+MIT. Inter is by The Inter Project Authors, under the SIL Open Font License 1.1 (`public/_lab/fonts/OFL.txt`). Made by [OOZE](https://ooze.design).
