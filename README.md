@@ -62,7 +62,7 @@ Paste [`prompts/add-comments.md`](prompts/add-comments.md) into the site's agent
 
 Script options: `data-host` (if the script is served from another host than the pages), `data-api`, `data-font="Name"` (a font the page already loads) or `data-font-url` (a woff2 to load), `data-enable="always"` (on everywhere, for testing).
 
-The layer is set in [Inter](https://rsms.me/inter/) (400 and 500, latin), served from `public/_lab/fonts/` next to the script, with the system font as fallback.
+The layer is set in [Inter](https://rsms.me/inter/) 4.1 (400 and 500, latin, 57 KB together), served from `public/_lab/fonts/` next to the script, with the system font as fallback. The files are the upstream latin subsets (npm `inter-ui`), which keep Inter's OpenType features: the layer turns on `ss03` (round quotes and commas) and `cv05` (l with a tail), and uses tabular figures for pin numbers, counts and times.
 
 ## Theme
 
@@ -76,8 +76,11 @@ The layer follows the visitor's light or dark setting and takes its colours from
   --lab-fg: #141414;         /* text. default #141414, dark: #f4f4f5 */
   --lab-radius: 14px;        /* cards and fields. default 14px */
   --lab-font: 'Inter', sans-serif;
+  --lab-font-features: 'calt', 'ss03', 'cv05';   /* e.g. add 'cv11' for a single-storey a, or normal for another font */
 }
 ```
+
+Text selected inside the layer, the caret, focus rings, the area you drag and the quoted words of an open text comment all use the accent. Motion is short (under 0.4 s) and switched off with `prefers-reduced-motion`.
 
 Borders, muted text and field backgrounds are mixed from `--lab-bg` and `--lab-fg`, so two colours are enough. Setting `--lab-bg` and `--lab-fg` also pins the layer to one look whatever the visitor's setting; set both, not one.
 

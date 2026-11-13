@@ -56,7 +56,7 @@
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `
     <style>
-      /* Theme: set --lab-accent, --lab-accent-fg, --lab-bg, --lab-fg, --lab-radius or --lab-font on the
+      /* Theme: set --lab-accent, --lab-accent-fg, --lab-bg, --lab-fg, --lab-radius, --lab-font or --lab-font-features on the
          [data-lab-comments] element (or on :root). Everything else is mixed from those. */
       :host { all: initial;
         --_bg: var(--lab-bg, #fff); --_fg: var(--lab-fg, #141414);
@@ -65,72 +65,105 @@
         --_muted: color-mix(in srgb, var(--_fg) 60%, var(--_bg));
         --_line: color-mix(in srgb, var(--_fg) 13%, var(--_bg));
         --_soft: color-mix(in srgb, var(--_fg) 6%, var(--_bg));
-        --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 10%, transparent), 0 10px 32px rgba(0,0,0,.12); }
+        --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 10%, transparent), 0 10px 32px rgba(0,0,0,.12);
+        --_ease: cubic-bezier(.2, .8, .2, 1); }
       @media (prefers-color-scheme: dark) {
         :host { --_bg: var(--lab-bg, #1c1c1e); --_fg: var(--lab-fg, #f4f4f5);
                 --_shadow: 0 0 0 1px color-mix(in srgb, var(--_fg) 16%, transparent), 0 10px 32px rgba(0,0,0,.5); }
       }
       * { box-sizing: border-box; font-family: var(--lab-font, 'lab-inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
-          font-size: 14px; line-height: 1.4; font-weight: 400; color: var(--_fg); letter-spacing: 0; -webkit-font-smoothing: antialiased; }
+          font-size: 14px; line-height: 1.4; font-weight: 400; color: var(--_fg); letter-spacing: 0;
+          font-feature-settings: var(--lab-font-features, 'calt', 'ss03', 'cv05'); font-synthesis: none; font-optical-sizing: auto;
+          -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
+          caret-color: var(--_accent); -webkit-tap-highlight-color: transparent; }
+      ::selection { background: color-mix(in srgb, var(--_accent) 38%, transparent); color: var(--_fg); }
+      button:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
       .layer { position: absolute; top: 0; left: 0; width: 0; height: 0; }
       .pin { position: absolute; width: 26px; height: 26px; margin: -26px 0 0 0; border-radius: 50% 50% 50% 3px;
              background: var(--_accent); border: 0; box-shadow: 0 0 0 2px var(--_bg), 0 2px 10px rgba(0,0,0,.25);
-             display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_accent-fg); font-size: 12px; font-weight: 500; }
+             display: grid; place-items: center; cursor: pointer; padding: 0; color: var(--_accent-fg); font-size: 12px; font-weight: 500;
+             font-variant-numeric: tabular-nums; letter-spacing: .01em; transform-origin: 0 100%;
+             transition: transform .16s var(--_ease), box-shadow .16s var(--_ease), opacity .16s; }
+      button.pin:hover { transform: scale(1.08); box-shadow: 0 0 0 2px var(--_bg), 0 4px 14px rgba(0,0,0,.28); }
+      button.pin:active { transform: scale(.96); }
+      .pin.in { animation: lab-pin .26s var(--_ease); }
       .pin.resolved { background: var(--_muted); color: var(--_bg); }
       .pin.moved { opacity: .5; }
       .zone { position: absolute; border: 1.5px solid var(--_accent); background: color-mix(in srgb, var(--_accent) 12%, transparent);
-              border-radius: 4px; pointer-events: none; }
+              border-radius: var(--_radius); pointer-events: none; }
+      .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
       .zone.saved { background: color-mix(in srgb, var(--_accent) 7%, transparent); }
+      .zone.saved.in { animation: lab-settle .36s var(--_ease); }
       .pin.new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
                         background: var(--_fg); box-shadow: 0 0 0 2px var(--_bg); }
       .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--_accent); margin: 0 6px 1px 0; }
       .card { position: absolute; width: 320px; max-width: calc(100vw - 24px); background: var(--_bg); border-radius: var(--_radius);
-              box-shadow: var(--_shadow); padding: 14px 16px 16px; }
+              box-shadow: var(--_shadow); padding: 14px 16px 16px; transform-origin: 14px 0; z-index: 1; }
+      .card.in, .float.in { animation: lab-in .18s var(--_ease); }
+      .card.out, .float.out { animation: lab-out .14s ease-in forwards; pointer-events: none; }
       .item + .item { border-top: 1px solid var(--_line); margin-top: 12px; padding-top: 12px; }
-      .meta { font-size: 12px; color: var(--_muted); margin-bottom: 3px; }
-      .meta b { font-weight: 500; font-size: 13px; }
-      .text { white-space: pre-wrap; word-wrap: break-word; }
+      .meta { display: flex; align-items: baseline; gap: .3em; font-size: 12px; color: var(--_muted); margin-bottom: 3px;
+              white-space: nowrap; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+      .meta b { font-weight: 500; font-size: 13px; letter-spacing: .005em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+      .meta .dot { flex: none; align-self: center; margin: 0 .2em 0 0; }
+      .text { white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
       .row { display: flex; gap: 12px; justify-content: flex-end; align-items: center; margin-top: 10px; }
-      button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px; }
+      button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
+                   letter-spacing: .01em; border-radius: 4px; transition: color .12s; }
       button.btn:hover { color: var(--_fg); }
-      .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); }
+      .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
       .card .composer { margin-top: 12px; }
       .box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "text send"; align-items: center; column-gap: 8px;
-             background: var(--_bg); border-radius: var(--_radius); padding: 7px 7px 7px 14px; }
+             background: var(--_bg); border-radius: var(--_radius); padding: 7px 7px 7px 14px; transition: box-shadow .15s; }
       .float .box { box-shadow: var(--_shadow); }
+      .float .box:focus-within { box-shadow: var(--_shadow), 0 0 0 1px color-mix(in srgb, var(--_accent) 55%, transparent); }
       .card .box { background: var(--_soft); border-radius: max(calc(var(--_radius) - 4px), 0px); margin: 0 -6px -6px; }
-      .card .box:focus-within, .card .box.open { box-shadow: inset 0 0 0 1px var(--_line); }
+      .card .box.open { box-shadow: inset 0 0 0 1px var(--_line); }
+      .card .box:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--_accent) 55%, transparent); }
       .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 10px 8px 8px 14px; }
       .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 4px 0; margin: 0; resize: none;
                       min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; }
       .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
       .line { grid-area: line; height: 1px; background: var(--_line); margin: 0 -8px 0 -14px; display: none; }
-      .who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; font-size: 13px; color: var(--_muted); }
+      .who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; font-size: 13px; color: var(--_muted); letter-spacing: .005em; }
       .who * { font-size: 13px; }
       .who span { color: var(--_muted); }
-      .who input { flex: 1; min-width: 0; border: 0; background: none; padding: 0; margin: 0; outline: none; color: var(--_muted); }
+      .who input { flex: 1; min-width: 0; border: 0; background: none; padding: 0; margin: 0; outline: none; color: var(--_muted); text-overflow: ellipsis; }
       .who input:focus { color: var(--_fg); }
-      .box.open .line { display: block; }
-      .box.open .who { display: flex; }
+      .box.open .line { display: block; animation: lab-fade .16s ease-out; }
+      .box.open .who { display: flex; animation: lab-fade .16s ease-out; }
       .send { grid-area: send; width: 28px; height: 28px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
-              background: var(--_line); color: var(--_muted); display: grid; place-items: center; transition: background .15s, color .15s; }
+              background: var(--_line); color: var(--_muted); display: grid; place-items: center; transition: background .15s, color .15s, transform .15s var(--_ease); }
+      .send.ready:hover { transform: scale(1.06); }
+      .send.ready:active { transform: scale(.94); }
       .send.ready { background: var(--_accent); color: var(--_accent-fg); }
       .send svg { display: block; }
       .send * { color: inherit; }
-      .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; }
+      .error { color: #e5484d; font-size: 12px; padding: 6px 8px 0; letter-spacing: .01em; }
       .error:empty { display: none; }
       .bar { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; }
       .bar button { border: 0; border-radius: 999px; padding: 9px 14px; cursor: pointer; background: var(--_bg); color: var(--_fg);
-                    box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center; }
+                    box-shadow: var(--_shadow); font-size: 13px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center;
+                    letter-spacing: .005em; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color .15s, transform .15s var(--_ease); }
+      .bar button:active { transform: scale(.97); }
       .bar button * { color: inherit; font-weight: inherit; }
       .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
       .bar button.secondary { color: var(--_muted); }
       kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: 4px; text-align: center;
             background: var(--_soft); color: var(--_muted) !important; }
       .hint { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
-              box-shadow: var(--_shadow); padding: 8px 14px; border-radius: 999px; font-size: 13px; pointer-events: none; white-space: nowrap; }
+              box-shadow: var(--_shadow); padding: 8px 14px; border-radius: 999px; font-size: 13px; pointer-events: none; white-space: nowrap;
+              letter-spacing: .005em; animation: lab-fade .2s ease-out; }
       /* 16px fields keep iOS from zooming the page when one is focused. */
-      @media (pointer: coarse) { .box textarea, .who input { font-size: 16px; } kbd { display: none; } }
+      @media (pointer: coarse) { .box textarea, .who input { font-size: 16px; letter-spacing: -.006em; } kbd { display: none; } }
+      @keyframes lab-fade { from { opacity: 0; } }
+      @keyframes lab-in { from { opacity: 0; transform: translateY(4px) scale(.98); } }
+      @keyframes lab-out { to { opacity: 0; transform: translateY(2px) scale(.985); } }
+      @keyframes lab-pin { from { transform: scale(1.22); } }
+      @keyframes lab-settle { from { background: color-mix(in srgb, var(--_accent) 16%, transparent);
+                                     box-shadow: 0 0 0 5px color-mix(in srgb, var(--_accent) 18%, transparent); }
+                              to { box-shadow: 0 0 0 0 color-mix(in srgb, var(--_accent) 0%, transparent); } }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
       @media (max-width: 480px) { kbd { display: none; } }
       [hidden] { display: none !important; }
     </style>
@@ -372,6 +405,34 @@
     return { left, top, zone, moved: Boolean(anchor.selector) && anchor.selector !== 'body' };
   }
 
+  // The quoted words of a text comment, found again in the page, for the highlight (CSS Custom Highlight API:
+  // nothing in the page's DOM is touched).
+  function quoteRange(anchor) {
+    const q = anchor?.quote;
+    const node = q?.exact ? findTarget(anchor) : null;
+    if (!node) return null;
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    const tail = (q.prefix || '').slice(-12);
+    let first = null;
+    for (let t; (t = walker.nextNode()); ) {
+      for (let i = t.data.indexOf(q.exact); i !== -1; i = t.data.indexOf(q.exact, i + 1)) {
+        const range = document.createRange();
+        range.setStart(t, i);
+        range.setEnd(t, i + q.exact.length);
+        if (!tail || t.data.slice(0, i).replace(/\s+/g, ' ').endsWith(tail)) return range;
+        first ||= range;
+      }
+    }
+    return first;
+  }
+  const canMark = typeof Highlight === 'function' && Boolean(CSS.highlights);
+  const markQuote = (anchor) => {
+    if (!canMark) return;
+    const range = anchor && quoteRange(anchor);
+    if (range) CSS.highlights.set('lab-quote', new Highlight(range));
+    else CSS.highlights.delete('lab-quote');
+  };
+
   const drawZone = (box, cls) => {
     if (!box) return;
     const z = el('div', { class: `zone ${cls}` });
@@ -612,8 +673,30 @@
     }
   }
 
+  // What the last render had open (a thread id or a draft), so cards, pins and areas only animate when they
+  // appear, not on every re-render, and a card that closes to nothing can fade out.
+  let shown = null;
+  let posted = null;
+  const still = matchMedia('(prefers-reduced-motion: reduce)');
   function render() {
+    const prev = layer.querySelector('.card:not(.out), .float:not(.out)');
     layer.replaceChildren();
+    const now = on ? draft || openId : null;
+    const appear = now !== shown;
+    const anim = appear ? ' in' : '';
+    let quoted = null;
+    const done = () => {
+      if (!now && shown && prev && !still.matches) {
+        prev.classList.remove('in');
+        prev.classList.add('out');
+        prev.inert = true;
+        layer.append(prev);
+        setTimeout(() => prev.remove(), 150);
+      }
+      markQuote(quoted);
+      shown = now;
+      posted = null;
+    };
     const list = threads();
     const open = list.filter((c) => !c.resolved).length;
     const fresh = list.filter((c) => !c.resolved).reduce((n, c) => n + unread(c).length, 0);
@@ -626,16 +709,16 @@
     toggleBtn.classList.toggle('secondary', on);
     document.documentElement.classList.toggle('lab-pinning', on);
     copyBtn.hidden = !on || !isAdmin || list.every((c) => c.resolved);
-    if (!on) return;
+    if (!on) return done();
 
     list.forEach((c) => {
       const { left, top, moved, zone } = position(c.anchor || {});
-      if (openId === c.id) drawZone(zone, 'saved');
+      if (openId === c.id) drawZone(zone, `saved${anim}`);
       const news = unread(c);
       const pin = el(
         'button',
         {
-          class: `pin${c.resolved ? ' resolved' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}`,
+          class: `pin${c.resolved ? ' resolved' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${posted === c.id ? ' in' : ''}`,
           type: 'button',
           title: moved ? `${c.name} · the spot it was pinned to has changed` : c.name,
         },
@@ -652,8 +735,11 @@
       layer.append(pin);
       if (openId === c.id) {
         // Area comments open below the area, so the card doesn't hide what it is about.
-        placeCard(threadCard(c, new Set(news.map((x) => x.id))), zone ? left + 14 : left, zone ? zone.top + zone.height : top);
+        const card = threadCard(c, new Set(news.map((x) => x.id)));
+        if (appear) card.classList.add('in');
+        placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
         markSeen(news);
+        quoted = c.anchor;
       }
     });
 
@@ -661,11 +747,12 @@
       const { anchor } = draft;
       const { left, top, zone } = position(anchor);
       drawZone(zone, 'draft');
-      const pin = el('div', { class: 'pin draft' });
+      quoted = anchor;
+      const pin = el('div', { class: `pin draft${anim}` });
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
       layer.append(pin);
-      const float = el('div', { class: 'float' });
+      const float = el('div', { class: `float${anim}` });
       float.append(
         composer({
           placeholder: 'add a comment',
@@ -676,6 +763,7 @@
             markSeen([comment]);
             draft = null;
             openId = comment.id;
+            posted = comment.id;
             render();
           },
         }),
@@ -683,6 +771,7 @@
       if (zone) placeCard(float, left + 14, zone.top + zone.height);
       else placeBeside(float, left, top);
     }
+    done();
   }
 
   function threadCard(c, fresh = new Set()) {
@@ -775,6 +864,17 @@
   let drag = null;
   let afterDrag = false;
   let liveZone = null;
+  let zoneFrame = 0;
+  // One write per frame, position by transform: the frame follows the pointer without forcing layout in between.
+  const paintZone = () => {
+    zoneFrame = 0;
+    if (!drag?.active || !liveZone) return;
+    const x = Math.min(drag.x0, drag.x1) + scrollX;
+    const y = Math.min(drag.y0, drag.y1) + scrollY;
+    liveZone.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    liveZone.style.width = `${Math.abs(drag.x1 - drag.x0)}px`;
+    liveZone.style.height = `${Math.abs(drag.y1 - drag.y0)}px`;
+  };
   document.addEventListener(
     'pointerdown',
     (e) => {
@@ -795,17 +895,12 @@
         drag.active = true;
         getSelection?.()?.removeAllRanges();
         document.documentElement.classList.add('lab-dragging');
-        liveZone = el('div', { class: 'zone draft' });
+        liveZone = el('div', { class: 'zone draft live' });
         layer.append(liveZone);
       }
       if (!drag.active) return;
       e.preventDefault();
-      Object.assign(liveZone.style, {
-        left: `${Math.min(drag.x0, drag.x1) + scrollX}px`,
-        top: `${Math.min(drag.y0, drag.y1) + scrollY}px`,
-        width: `${Math.abs(drag.x1 - drag.x0)}px`,
-        height: `${Math.abs(drag.y1 - drag.y0)}px`,
-      });
+      zoneFrame ||= requestAnimationFrame(paintZone);
     },
     true,
   );
@@ -814,6 +909,8 @@
     const d = drag;
     drag = null;
     document.documentElement.classList.remove('lab-dragging');
+    cancelAnimationFrame(zoneFrame);
+    zoneFrame = 0;
     liveZone?.remove();
     liveZone = null;
     if (!d.active || e.type === 'pointercancel') return;
@@ -872,7 +969,7 @@
   });
   if ('ResizeObserver' in window) new ResizeObserver(reflow).observe(document.body);
 
-  // Font: Inter (400 and 500, latin) from the fonts folder next to this script, under a private family name so it
+  // Font: Inter 4 (400 and 500, latin, with its OpenType features) from the fonts folder next to this script, under a private family name so it
   // can't clash with the page's fonts. @font-face is ignored inside a shadow root, so it goes in the document.
   // Other fonts: --lab-font on the host element, data-font="Name" (a font the page already loads) or data-font-url (a woff2).
   const fonts = document.createElement('style');
@@ -895,6 +992,11 @@
     document.head.append(fonts);
     if (on) showHint();
     document.body.append(host);
+    // The page's own selection while commenting, and the quoted words of an open text comment, in the accent.
+    // These rules live in the document, so the colours are read from the layer once it is in the page.
+    const cs = getComputedStyle(host);
+    const paint = `background-color: ${cs.getPropertyValue('--_accent').trim() || '#6b57ff'}; color: ${cs.getPropertyValue('--_accent-fg').trim() || '#fff'};`;
+    fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     load();
   };
   if (document.body) start();
