@@ -2,6 +2,11 @@
 
 One domain for client pages from many designers, with pin comments clients can leave without an account and agents can read as plain text.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/comments-dark.png">
+  <img alt="A demo page with three numbered comment pins and an open thread" src="docs/comments-light.png">
+</picture>
+
 We built it for [OOZE](https://ooze.design) and run it at `lab.ooze.design`. This repo is the whole thing: the proxy setup, the comment layer, its API and the prompts we hand to a designer's agent.
 
 ## How it works
@@ -95,7 +100,7 @@ Open any lab page once with `?lab-admin=<LAB_COMMENTS_ADMIN_TOKEN>`. The token s
 page: https://lab.example.com/anna/acme/k3v9qz7mtp/landing
 open: 1
 
-## 1. Sam · 2026-11-11 14:53 UTC · id 3f9c0a1b2d4e
+## 1. Leo · 2026-11-11 14:53 UTC · id 3f9c0a1b2d4e
 comment: make this area calmer
 on: image "hero-gradient.jpg" (search the repo's src/ and public/ for it)
 area in original: 34–70% across, 6–40% down of 1600×1000
