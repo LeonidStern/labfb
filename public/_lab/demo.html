@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>lab · comments demo</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: #fff; color: #000; font: 400 17px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 48px 16px 120px; }
+  h1 { font-weight: 500; font-size: clamp(40px, 7vw, 88px); line-height: 1; letter-spacing: -0.02em; margin: 0 0 16px; }
+  p.lead { color: #535353; max-width: 640px; margin: 0 0 48px; }
+  figure { margin: 0 0 48px; }
+  img { display: block; width: 100%; height: auto; border-radius: 12px; background: #F4F4F4; }
+  figcaption { color: #6b6b6b; font-size: 15px; margin-top: 10px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main data-lab="demo">
+  <h1>comments demo</h1>
+  <p class="lead">a test page for the lab comment layer. tap "comments" or press <b>c</b> to turn comments on, then click anywhere to pin feedback or drag to mark an area. try it on desktop and phone.</p>
+  <figure data-lab="hero"><img src="/_lab/demo-img/hero-gradient.jpg" width="1600" height="1000" alt="blue and black gradient"><figcaption>hero · gradient study</figcaption></figure>
+  <div class="grid" data-lab="cards">
+    <figure><img src="/_lab/demo-img/card-warm.jpg" width="1200" height="800" alt="warm gradient"><figcaption>card · warm</figcaption></figure>
+    <figure><img src="/_lab/demo-img/card-cool.jpg" width="1200" height="1500" alt="cool gradient"><figcaption>card · cool</figcaption></figure>
+  </div>
+</main>
+<script src="/_lab/comments.js" defer></script>
+</body>
+</html>

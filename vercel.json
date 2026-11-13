@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "public",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "headers": [
+    { "source": "/(.*)", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] }
+  ],
+  "rewrites": [
+    { "source": "/_lab/api/comments", "destination": "/api/lab-comments" },
+    { "source": "/_lab/agent/:path*", "destination": "/api/lab-comments?format=text&page=/:path*" },
+    { "source": "/_lab/demo", "destination": "/_lab/demo.html" },
+
+    { "source": "/anna", "destination": "https://anna-lab.vercel.app/anna" },
+    { "source": "/anna/:path*", "destination": "https://anna-lab.vercel.app/anna/:path*" }
+  ]
+}
