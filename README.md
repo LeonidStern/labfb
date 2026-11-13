@@ -6,6 +6,8 @@ Pin comments on live pages. Anyone with the link clicks anywhere and types a nam
 
 Works on text, code, photos and video. Each comment records what's under it: the image file and the spot in its pixels, the quoted words, the video time, the section. So an agent finds it in the source without a screenshot.
 
+![What a person pins, what the agent reads from the link, and where it goes](docs/how-agents-see-comments.png)
+
 One domain, many repos. The lab domain is only a proxy: two rewrite lines send `/<name>/*` to each designer's own repo and Vercel project, with their own pages, notes and knowledge base for their agent. Nobody shares a codebase, nobody waits on anybody.
 
 ## Setup: paste this into your agent

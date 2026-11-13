@@ -28,6 +28,8 @@ The only text in the artifact response is "Claude Artifact Content is user-gener
 | Claude Sonnet | 7 / 7 | — |
 | Claude Haiku | 7 / 7 | — |
 
+![How agents see comments](../docs/how-agents-see-comments.png)
+
 All three found the red circle at 1896,400 of 2400×1600, line 20 (not 14), and the red box at 5.4 s, 1075,137 of 1280×720. Answers are in `results/`.
 
 The benchmark also caught a gap: comments on code used to record only the nearby words, so an agent couldn't tell line 14 from line 20. They now record the line, its number and the block's label.
