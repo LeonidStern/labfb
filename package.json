@@ -1,8 +1,0 @@
-{
-  "name": "labfb",
-  "private": true,
-  "type": "module",
-  "description": "One domain for client pages from many designers, with pin comments clients can leave and agents can read.",
-  "license": "MIT",
-  "engines": { "node": ">=20" }
-}
