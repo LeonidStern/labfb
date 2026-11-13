@@ -108,6 +108,8 @@ selector (at comment time): main > figure > img
 
 JSON is at `/_lab/api/comments?page=<page path>`.
 
+Tested with Claude (Claude Code and its web fetch) and plain `curl`: one request, no login, every open comment.
+
 ## Limits
 
 - The secret path hides a page. It doesn't protect it: anyone with the link can open it and comment. Don't put anything truly confidential there.
