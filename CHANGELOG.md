@@ -9,6 +9,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - Delete asks inside the card, not with the browser's dialog.
 - Hold Option to comment on links and buttons, also while comments are hidden with `c`.
 - Posting a new comment closes its card; the pin stays.
+- Closing the page: Claude keeps waiting quietly and wakes on your next comment; after an hour with no page open, `wait` ends and says so. Tabs in the background count as open.
 - Replies use the comment id (numbers shift after a delete).
 - Fixed: an unknown option was read as a folder name; paths with spaces or on Windows.
 

@@ -18,7 +18,7 @@ Pin comments on pages, and your agent reads them as plain text. Use it on a live
 **Local lab**: pages on your computer, for you and Claude
 - **No deploy:** `npx @leonidstern/labfb <folder>` puts comments on plain HTML files, or on a running Astro, Next or Vite dev server.
 - **Claude answers on the pin:** it hears each comment as you post it, edits the file, the page reloads, and the reply shows on the pin.
-- **Shows who is listening:** the label says whether Claude is listening or working.
+- **Shows who is listening:** the label says whether Claude is listening or working. Close the page and Claude waits quietly: your first comment when you're back wakes it, and it stops after an hour.
 - **Quick model first (optional):** small, clear changes are done by a fast model in a few seconds.
 - **Phone too:** `--wifi` lets a phone at home join. Comments stay in `<folder>/.lab`, one store per project.
 

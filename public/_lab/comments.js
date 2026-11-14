@@ -1285,9 +1285,12 @@
     root.append(who);
     let stream = null;
     let seen = null;
+    // The server counts open tabs: a tab in the background still counts, and says bye when it closes, so closing
+    // the page stops Claude listening.
+    const tab = Math.random().toString(36).slice(2, 12);
     const connect = () => {
       if (stream || document.hidden) return;
-      stream = new EventSource(script.dataset.live);
+      stream = new EventSource(`${script.dataset.live}?tab=${tab}`);
       stream.onmessage = (e) => {
         const v = JSON.parse(e.data);
         if (String(v.files) !== script.dataset.version) return reload();
@@ -1314,6 +1317,12 @@
       stream?.close();
       stream = null;
     });
+    addEventListener('pagehide', () => {
+      stream?.close();
+      stream = null;
+      fetch(script.dataset.live.replace(/live$/, 'bye'), { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tab }) }).catch(() => {});
+    });
+    addEventListener('pageshow', (e) => e.persisted && connect()); // back from the back-forward cache
     connect();
   }
 })();

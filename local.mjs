@@ -32,7 +32,7 @@ Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
 For Claude, from inside the folder:
   labfb wait [--timeout 1500]
       Run in the background. Ends with the next comment (and any not seen yet), printed in full.
-      The page then says it talks to this session.
+      The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
   labfb reply <id> "what you did" [--resolve] [--page /path]
       Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread.
   labfb resolve <id> [--page /path]
@@ -134,8 +134,9 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
     const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500 });
     if (out.status === 204) console.log('No new comments yet. Run wait again to keep listening.');
     else if (out.status === 409) console.log('Another session is listening now; this one stopped.');
+    else if (out.status === 410) console.log('The page was closed, so this stopped listening. Wait again only when the person asks or opens the page.');
     else console.log(out.text);
-    process.exit(out.status < 300 || out.status === 409 ? 0 : 1);
+    process.exit(out.status < 300 || out.status === 409 || out.status === 410 ? 0 : 1);
   }
 
   // A comment by its id (of the thread or of a reply in it) or by the number on its card.
@@ -348,6 +349,36 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (_, file) => {
 // Comments people made that Claude hasn't been given yet, whole threads, as the agent text shows them.
 let seen = fs.existsSync(SEEN) ? fs.readFileSync(SEEN, 'utf8').trim() : '';
 let waiter = null;
+// With every page closed, Claude keeps waiting quietly (a comment after a break still wakes it), and the wait
+// ends after an hour of no page. Each tab has an id. A tab in the background drops its stream but still counts as
+// open; it leaves when it says bye on pagehide (closed, or navigated away), or after half an hour with no stream.
+// A reload says bye and reconnects within a second. Claude starting wait again right after a timed-out one keeps
+// the same hour; a wait asked for later (the person said "listen") starts a new one.
+const CLOSE_GRACE = Number(process.env.LAB_CLOSE_GRACE || 3600) * 1000;
+const tabs = new Map(); // id -> { streams, seen }
+const openTabs = () => {
+  for (const [id, t] of tabs) if (!t.streams && Date.now() - t.seen > 1800000) tabs.delete(id);
+  return tabs.size;
+};
+let closedSince = Date.now(); // null while a page is open
+let waitEnded = 0;
+let closedTimer = null;
+const pagesChanged = () => {
+  if (openTabs()) closedSince = null;
+  else closedSince ??= Date.now();
+  clearTimeout(closedTimer);
+  if (closedSince === null || !waiter) return;
+  closedTimer = setTimeout(() => {
+    if (openTabs() || !waiter) return;
+    const w = waiter;
+    waiter = null;
+    waitEnded = Date.now();
+    clearTimeout(w.timer);
+    w.res.writeHead(410).end('the page was closed');
+    setMode('away');
+  }, Math.max(0, closedSince + CLOSE_GRACE - Date.now()));
+};
+setInterval(pagesChanged, 60000).unref();
 // The agent text of some threads on a page: its page/file lines, then each thread in full.
 async function threadsText(page, threads) {
   const text = await agentText(page);
@@ -384,6 +415,7 @@ async function wake() {
   if (!got?.text || !waiter) return;
   const w = waiter;
   waiter = null;
+  waitEnded = Date.now();
   clearTimeout(w.timer);
   deliver(w.res, got);
 }
@@ -510,8 +542,25 @@ const handler = async (req, res) => {
       const client = { res, local: isLoopback(req) };
       res.write(`data: ${state(client.local)}\n\n`);
       clients.add(client);
-      req.on('close', () => clients.delete(client));
+      const id = String(url.searchParams.get('tab') || '').slice(0, 40) || randomBytes(8).toString('hex');
+      const tab = tabs.get(id) || { streams: 0, seen: 0, anonymous: !url.searchParams.get('tab') };
+      tab.streams++;
+      tabs.set(id, tab);
+      pagesChanged();
+      req.on('close', () => {
+        clients.delete(client);
+        tab.streams--;
+        tab.seen = Date.now();
+        if (tab.anonymous) tabs.delete(id); // a stream without a tab id is the whole page
+        pagesChanged();
+      });
       return;
+    }
+    if (pathname === '/_lab/bye') {
+      const { tab } = JSON.parse((await new Response(req).text()) || '{}');
+      if (!tabs.get(tab)?.streams) tabs.delete(tab);
+      pagesChanged();
+      return res.writeHead(204).end();
     }
     if (pathname === '/_lab/wait') {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');
@@ -530,16 +579,20 @@ const handler = async (req, res) => {
         timer: setTimeout(() => {
           if (waiter !== w) return;
           waiter = null;
+          waitEnded = Date.now();
           res.writeHead(204).end();
           setMode('away');
         }, Math.min(Number(timeout) || 1500, 7000) * 1000),
       };
+      if (!openTabs() && Date.now() - waitEnded > 120000) closedSince = Date.now(); // a new listen: a new hour
       waiter = w;
       setMode('listening');
+      pagesChanged();
       // Claude stopped listening (the wait was cancelled): the page says so.
       res.on('close', () => {
         if (waiter !== w) return;
         waiter = null;
+        waitEnded = Date.now();
         clearTimeout(w.timer);
         setMode('away');
       });
