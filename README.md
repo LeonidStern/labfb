@@ -1,6 +1,6 @@
 # labfb
 
-[![npm](https://img.shields.io/npm/v/labfb)](https://www.npmjs.com/package/labfb) [![test](https://github.com/LeonidStern/labfb/actions/workflows/test.yml/badge.svg)](https://github.com/LeonidStern/labfb/actions/workflows/test.yml) [![MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
+[![npm](https://img.shields.io/npm/v/@leonidstern/labfb)](https://www.npmjs.com/package/@leonidstern/labfb) [![test](https://github.com/LeonidStern/labfb/actions/workflows/test.yml/badge.svg)](https://github.com/LeonidStern/labfb/actions/workflows/test.yml) [![MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
 
 Pin comments on pages, and your agent reads them as plain text. Use it on a live domain where anyone with the link can comment, or on your own computer, where Claude answers on the pins while it works.
 
@@ -16,7 +16,7 @@ Pin comments on pages, and your agent reads them as plain text. Use it on a live
 - **Admin links per person:** let someone resolve and delete on their pages only. Nothing to set up per person.
 
 **Local lab**: pages on your computer, for you and Claude
-- **No deploy:** `npx labfb <folder>` puts comments on plain HTML files, or on a running Astro, Next or Vite dev server.
+- **No deploy:** `npx @leonidstern/labfb <folder>` puts comments on plain HTML files, or on a running Astro, Next or Vite dev server.
 - **Claude answers on the pin:** it hears each comment as you post it, edits the file, the page reloads, and the reply shows on the pin.
 - **Shows who is listening:** the label says whether Claude is listening or working.
 - **Quick model first (optional):** small, clear changes are done by a fast model in a few seconds.
@@ -56,8 +56,8 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
 ## Local lab
 
 ```sh
-npx labfb ./my-site            # plain HTML files
-npx labfb . --proxy 4321       # or a running dev server
+npx @leonidstern/labfb ./my-site            # plain HTML files
+npx @leonidstern/labfb . --proxy 4321       # or a running dev server
 ```
 
 Then tell Claude Code to listen. The skill teaches it the loop (wait for a comment, fix it, reply on the pin, wait again). Install it once:
@@ -70,13 +70,13 @@ Then tell Claude Code to listen. The skill teaches it the loop (wait for a comme
 Or paste this into Claude Code:
 
 ```text
-Start labfb on <my folder> with `npx labfb <my folder>` (add --proxy <port> if a dev server already runs there).
-Then run `npx labfb wait --name "<project>"` in the background, fix what each comment asks, answer on the pin
-with `npx labfb reply <id> "Done: …"`, and wait again. `npx labfb --help` has the rest.
+Start labfb on <my folder> with `npx @leonidstern/labfb <my folder>` (add --proxy <port> if a dev server already runs there).
+Then run `npx @leonidstern/labfb wait --name "<project>"` in the background, fix what each comment asks, answer on the pin
+with `npx @leonidstern/labfb reply <id> "Done: …"`, and wait again. `npx @leonidstern/labfb --help` has the rest.
 ```
 
 - **Comment:** press `c` (or hold Option) and click. Drag to mark an area.
-- **Options:** `--proxy <port>` for a dev server, `--fast` for the quick model, `--wifi` for a phone at home. `npx labfb preview <folder>` opens it in the Claude desktop app's preview pane.
+- **Options:** `--proxy <port>` for a dev server, `--fast` for the quick model, `--wifi` for a phone at home. `npx @leonidstern/labfb preview <folder>` opens it in the Claude desktop app's preview pane.
 - **Files:** comments stay in `<folder>/.lab`. Delete it to start over. Add `.lab/` to `.gitignore`.
 
 ## Both

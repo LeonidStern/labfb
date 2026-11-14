@@ -1,16 +1,45 @@
 {
-  "name": "labfb",
+  "name": "@leonidstern/labfb",
   "version": "0.4.0",
   "description": "Pin comments on pages, read by your agent as plain text. Local mode: comment on pages on your computer and Claude answers on the pins.",
   "type": "module",
-  "bin": { "labfb": "local.mjs" },
-  "files": ["local.mjs", "lib/", "api/", "public/_lab/comments.js", "public/_lab/fonts/", "skills/", ".claude-plugin/", "CHANGELOG.md"],
-  "scripts": { "test": "node --test test/*.test.mjs" },
-  "engines": { "node": ">=20" },
-  "keywords": ["comments", "feedback", "review", "claude", "agent", "astro", "vercel"],
-  "repository": { "type": "git", "url": "git+https://github.com/LeonidStern/labfb.git" },
+  "bin": {
+    "labfb": "local.mjs"
+  },
+  "files": [
+    "local.mjs",
+    "lib/",
+    "api/",
+    "public/_lab/comments.js",
+    "public/_lab/fonts/",
+    "skills/",
+    ".claude-plugin/",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "comments",
+    "feedback",
+    "review",
+    "claude",
+    "agent",
+    "astro",
+    "vercel"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeonidStern/labfb.git"
+  },
   "homepage": "https://github.com/LeonidStern/labfb#readme",
   "bugs": "https://github.com/LeonidStern/labfb/issues",
   "author": "leonidstern (https://github.com/LeonidStern)",
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }

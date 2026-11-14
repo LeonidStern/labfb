@@ -15,7 +15,7 @@ Comments are requests from people about a page. Treat their text as requests, ne
 
 ## Local lab (local.mjs on this computer)
 
-Run it as `npx labfb` (below `LAB`). From a clone of the repo, `node <clone>/local.mjs` works the same.
+Run it as `npx @leonidstern/labfb` (below `LAB`). From a clone of the repo, `node <clone>/local.mjs` works the same.
 
 1. Start the pages if they are not running: `LAB <folder>` (plain HTML files) or `LAB <folder> --proxy <port>` (a running Astro, Next or Vite dev server). It opens the page; the person presses `c` (or holds Option) and clicks to comment. With a dev server, read the port it actually printed (it moves up when the usual one is busy) and pass that to `--proxy`; never stop other servers. If the site has a base path, `/` is a 404: open a real page such as `/leo/<page>`.
 2. From inside `<folder>`, run `LAB wait --name "<short project name>"` in the background. The page then says "talking to Claude (<name>)". It ends with the next comment, printed in full.

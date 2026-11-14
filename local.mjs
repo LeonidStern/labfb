@@ -13,11 +13,11 @@ import { apiOn, callApi, sendFile } from './lib/dev.mjs';
 
 const REPO = path.dirname(fileURLToPath(import.meta.url));
 const ME = path.join(REPO, 'local.mjs');
-// How to call this again: `npx labfb` once installed from npm, else the script's own path.
-const CMD = REPO.split(path.sep).includes('node_modules') ? 'npx labfb' : `node ${ME}`;
+// How to call this again: `npx @leonidstern/labfb` once installed from npm, else the script's own path.
+const CMD = REPO.split(path.sep).includes('node_modules') ? 'npx @leonidstern/labfb' : `node ${ME}`;
 const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')).version;
 const HELP = `labfb ${VERSION}: comment on local pages, Claude answers on the pins.
-Run it as npx labfb …, or node local.mjs … from a clone.
+Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
 
   labfb [folder] [--port 4400] [--wifi] [--no-open]
       Serve the folder at http://localhost:4400 with comments on every page. Pages reload when files change.
