@@ -6,7 +6,7 @@ import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { apiOn, callApi, sendFile } from './lib/dev.mjs';
@@ -19,17 +19,18 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf
 const HELP = `labfb ${VERSION}: comment on local pages, Claude answers on the pins.
 Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
 
-  labfb [folder] [--port 4400] [--wifi] [--no-open]
-      Serve the folder at http://localhost:4400 with comments on every page. Pages reload when files change.
+  labfb [--proxy [port]] [--port 4400] [--wifi] [--no-open] [folder]
+      Run it in your project. If the project has a dev server (Astro, Next, Vite…) running, comments go on top
+      of it: it finds the server run from this folder, even with other projects' servers running. Give
+      --proxy <port> to pick one yourself. A folder of HTML files is served as it is at http://localhost:4400
+      and reloads when files change. The folder is this one unless you name another.
       --wifi lets phones and laptops on the same wifi comment too (as guests). Use it at home only.
-      --proxy 4321: put comments on a running dev server (Astro, Next, Vite…) instead of plain files.
-      Its own live reload keeps working; comments are saved in <folder>/.lab as usual.
       --fast: a quick model (claude -p, haiku) tries each new comment from this computer first. Small, clear
       changes it makes and answers "Done: …" on the pin; anything else goes to the session as usual.
   labfb preview [folder]
-      Add "lab" to <folder>/.claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
+      Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
 
-For Claude, from inside the folder:
+For Claude, from the project (any folder under it):
   labfb wait [--timeout 1500]
       Run in the background. Ends with the next comment (and any not seen yet), printed in full.
       The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
@@ -37,7 +38,7 @@ For Claude, from inside the folder:
       Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread.
   labfb resolve <id> [--page /path]
 
-Files in <folder>/.lab: comments.md (every open comment as text), comments.json (the store),
+Files in .lab/ inside the folder: comments.md (every open comment as text), comments.json (the store),
 server.json (port, key, session; owner-only), seen. Delete .lab to start over.`;
 
 // ---------- arguments ----------
@@ -49,7 +50,12 @@ for (let i = 0; i < argv.length; i++) {
   if (a === '--help' || a === '-h') opts.help = true;
   else if (a === '--version' || a === '-v') opts.version = true;
   else if (['--wifi', '--no-open', '--resolve', '--fast'].includes(a)) opts[a.slice(2)] = true;
-  else if (['--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a)) opts[a.slice(2)] = argv[++i];
+  else if (['--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a)) {
+    // --proxy on its own means "find the dev server yourself".
+    const v = argv[i + 1];
+    if (v === undefined || v.startsWith('-')) opts[a.slice(2)] = true;
+    else opts[a.slice(2)] = argv[++i];
+  }
   else pos.push(a);
 }
 if (opts.help || opts.version) {
@@ -107,7 +113,7 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
   const [cmd, ref, ...words] = pos;
   let dir = path.resolve(opts.dir || '.');
   while (!fs.existsSync(path.join(dir, '.lab/server.json'))) {
-    if (path.dirname(dir) === dir) die(`No lab server for this folder. Start one: ${CMD} <folder>`);
+    if (path.dirname(dir) === dir) die(`No lab server for this folder. Start one: run ${CMD} in the project.`);
     dir = path.dirname(dir);
   }
   const server = JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8'));
@@ -126,7 +132,7 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
           res.on('end', () => resolve({ status: res.statusCode, text }));
         },
       );
-      req.on('error', () => die(`The lab server for ${dir} isn't running. Start it: ${CMD} ${dir}`));
+      req.on('error', () => die(`The lab server for ${dir} isn't running. Start it: ${CMD} ${dir === process.cwd() ? '' : dir}`.trim() + '.'));
       req.end(data);
     });
 
@@ -173,8 +179,103 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
 // ---------- the server ----------
 const unknown = argv.find((a) => a.startsWith('--') && !['--help', '--version', '--wifi', '--no-open', '--resolve', '--fast', '--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a));
 if (unknown) die(`Unknown option ${unknown}. See: ${CMD} --help`);
-if (pos[0] && !fs.existsSync(pos[0])) die(`No folder ${pos[0]}. Usage: ${CMD} <folder> (see --help)`);
+if (pos[0] && !fs.existsSync(pos[0])) die(`No folder ${pos[0]}. Run ${CMD} in your project, or name a folder (see --help)`);
 const ROOT = fs.realpathSync(path.resolve(pos[0] || '.'));
+
+// ---------- finding the dev server ----------
+// A server already running for this folder answers below, whatever kind it is.
+const alreadyRunning = (() => {
+  try {
+    process.kill(JSON.parse(fs.readFileSync(path.join(ROOT, '.lab/server.json'), 'utf8')).pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+// Every server listening on this computer, with the folder it runs in (lsof: macOS and Linux).
+// Several projects' dev servers often run at once, so a port is only this project's if its folder is.
+function devServers() {
+  // lsof fails when it can't read one process (root's, or one that just ended) but still prints the rest.
+  const lsof = (args) => {
+    try {
+      return execFileSync('lsof', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 });
+    } catch (e) {
+      if (e.code === 'ENOENT' || !e.stdout) throw e;
+      return e.stdout;
+    }
+  };
+  let out;
+  try {
+    out = lsof(['-nP', '-iTCP', '-sTCP:LISTEN', '-Fpn']);
+  } catch {
+    return null;
+  }
+  const ports = new Map();
+  let pid;
+  for (const line of out.split('\n')) {
+    if (line[0] === 'p') pid = Number(line.slice(1));
+    else if (line[0] === 'n' && pid !== process.pid) {
+      const port = Number(line.match(/:(\d+)$/)?.[1]);
+      if (port) ports.set(pid, [...new Set([...(ports.get(pid) || []), port])]);
+    }
+  }
+  if (!ports.size) return [];
+  const cwds = new Map();
+  try {
+    for (const line of lsof(['-a', '-p', [...ports.keys()].join(','), '-d', 'cwd', '-Fpn']).split('\n')) {
+      if (line[0] === 'p') pid = Number(line.slice(1));
+      else if (line[0] === 'n') cwds.set(pid, line.slice(1));
+    }
+  } catch {}
+  return [...ports].flatMap(([p, list]) => list.map((port) => ({ port, dir: cwds.get(p) || '' })));
+}
+// This project's server: one running in this folder or a folder inside it (a monorepo's app).
+const inRoot = (dir) => dir === ROOT || dir.startsWith(ROOT + path.sep);
+function findDevServer() {
+  const all = devServers();
+  if (!all) return { port: null, others: [] };
+  const mine = all.filter((s) => inRoot(s.dir) && s.port !== (Number(opts.port) || 4400)).sort((a, b) => a.port - b.port);
+  const others = all
+    .filter((s) => !inRoot(s.dir) && s.port >= 1024 && s.port < 10000 && s.dir.startsWith(os.homedir() + path.sep))
+    .sort((a, b) => a.port - b.port);
+  return { port: mine[0]?.port ?? null, others };
+}
+const tilde = (dir) => dir.replace(os.homedir(), '~');
+const othersNote = (others) =>
+  others.length ? `\nOther projects' servers (not this one): ${others.slice(0, 4).map((s) => `:${s.port} ${tilde(s.dir)}`).join(', ')}` : '';
+
+if (opts.proxy === true && !alreadyRunning) {
+  const { port, others } = findDevServer();
+  if (!port) die(`[lab] no dev server running in ${tilde(ROOT)}. Start it (npm run dev), or give its port: ${CMD} --proxy <port>${othersNote(others)}`);
+  console.log(`[lab] dev server for this project on :${port}`);
+  opts.proxy = String(port);
+}
+
+// A project with a dev server is not a folder of pages: serving it would list node_modules and src.
+if (!opts.proxy && !alreadyRunning) {
+  const hasPage = (dir, depth = 0) =>
+    fs.readdirSync(dir, { withFileTypes: true }).some((d) => {
+      if (d.name.startsWith('.') || d.name === 'node_modules') return false;
+      return d.isDirectory() ? depth < 3 && hasPage(path.join(dir, d.name), depth + 1) : /\.html?$/i.test(d.name);
+    });
+  let pkg = null;
+  try {
+    pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  } catch {}
+  if (pkg?.scripts?.dev && !hasPage(ROOT)) {
+    const { port, others } = findDevServer();
+    if (!port)
+      die(
+        `[lab] ${tilde(ROOT)} is a project with a dev server, and it isn't running.\n` +
+          `Start it (npm run dev), then run this again. Or serve built pages:  ${CMD} dist` +
+          othersNote(others),
+      );
+    console.log(`[lab] dev server for this project on :${port}`);
+    opts.proxy = String(port);
+  }
+}
+
 const LAB = path.join(ROOT, '.lab');
 const DATA = path.join(LAB, 'comments.json');
 const SERVER = path.join(LAB, 'server.json');

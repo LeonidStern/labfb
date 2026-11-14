@@ -16,11 +16,11 @@ Pin comments on pages, and your agent reads them as plain text. Use it on a live
 - **Admin links per person:** let someone resolve and delete on their pages only. Nothing to set up per person.
 
 **Local lab**: pages on your computer, for you and Claude
-- **No deploy:** `npx @leonidstern/labfb <folder>` puts comments on plain HTML files, or on a running Astro, Next or Vite dev server.
+- **No deploy:** run `npx @leonidstern/labfb` in your project. It finds your running Astro, Next or Vite dev server and puts comments on top, or serves plain HTML files.
 - **Claude answers on the pin:** it hears each comment as you post it, edits the file, the page reloads, and the reply shows on the pin.
 - **Shows who is listening:** the label says whether Claude is listening or working. Close the page and Claude waits quietly: your first comment when you're back wakes it, and it stops after an hour.
 - **Quick model first (optional):** small, clear changes are done by a fast model in a few seconds.
-- **Phone too:** `--wifi` lets a phone at home join. Comments stay in `<folder>/.lab`, one store per project.
+- **Phone too:** `--wifi` lets a phone at home join. Comments stay in `.lab/`, one store per project.
 
 Both: works on text, code, photos and video, drag your pins, hold Option to comment on links and buttons, 19 KB gzipped, and a [Claude skill](skills/labfb/SKILL.md) that knows both flows.
 
@@ -55,29 +55,34 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
 
 ## Local lab
 
-```sh
-npx @leonidstern/labfb ./my-site            # plain HTML files
-npx @leonidstern/labfb . --proxy 4321       # or a running dev server
-```
-
-Then tell Claude Code to listen. The skill teaches it the loop (wait for a comment, fix it, reply on the pin, wait again). Install it once:
+Install the Claude Code plugin once:
 
 ```text
 /plugin marketplace add leonidstern/labfb
 /plugin install labfb@leonidstern
 ```
 
-Or paste this into Claude Code:
+Then, in any project, tell Claude **"start labfb"**. It runs labfb there, opens the page and listens: you comment, it fixes the file, the page reloads, and the reply shows on the pin.
+
+Without Claude, in your project:
+
+```sh
+npx @leonidstern/labfb
+```
+
+- **Dev server (Astro, Next, Vite…):** start it as usual. labfb finds the one running from this project, even with other projects' servers running, and puts comments on top. `--proxy 4321` picks a port yourself.
+- **Plain HTML files:** served as they are. Pages somewhere else: `npx @leonidstern/labfb dist`.
+
+No plugin? Paste this into Claude Code in the project:
 
 ```text
-Start labfb on <my folder> with `npx @leonidstern/labfb <my folder>` (add --proxy <port> if a dev server already runs there).
-Then run `npx @leonidstern/labfb wait --name "<project>"` in the background, fix what each comment asks, answer on the pin
-with `npx @leonidstern/labfb reply <id> "Done: …"`, and wait again. `npx @leonidstern/labfb --help` has the rest.
+Run `npx @leonidstern/labfb` here, then `npx @leonidstern/labfb wait` in the background. Fix what each comment asks,
+answer on the pin with `npx @leonidstern/labfb reply <id> "Done: …"` (the id that wait printed), and wait again.
 ```
 
 - **Comment:** press `c` (or hold Option) and click. Drag to mark an area.
-- **Options:** `--proxy <port>` for a dev server, `--fast` for the quick model, `--wifi` for a phone at home. `npx @leonidstern/labfb preview <folder>` opens it in the Claude desktop app's preview pane.
-- **Files:** comments stay in `<folder>/.lab`. Delete it to start over. Add `.lab/` to `.gitignore`.
+- **Options:** `--fast` for the quick model, `--wifi` for a phone at home. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
+- **Files:** comments stay in `.lab/` in the project. Delete it to start over. Add `.lab/` to `.gitignore`.
 
 ## Both
 
