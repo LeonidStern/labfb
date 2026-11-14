@@ -32,7 +32,7 @@ Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
 For Claude, from inside the folder:
   labfb wait [--timeout 1500]
       Run in the background. Ends with the next comment (and any not seen yet), printed in full.
-      The page then says it talks to this session.
+      The page then says it talks to this session. Ends too when no page has been open for 2 minutes.
   labfb reply <id> "what you did" [--resolve] [--page /path]
       Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread.
   labfb resolve <id> [--page /path]
@@ -134,8 +134,9 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
     const out = await call('/_lab/wait', { timeout: Number(opts.timeout) || 1500 });
     if (out.status === 204) console.log('No new comments yet. Run wait again to keep listening.');
     else if (out.status === 409) console.log('Another session is listening now; this one stopped.');
+    else if (out.status === 410) console.log('The page was closed, so this stopped listening. Wait again only when the person asks or opens the page.');
     else console.log(out.text);
-    process.exit(out.status < 300 || out.status === 409 ? 0 : 1);
+    process.exit(out.status < 300 || out.status === 409 || out.status === 410 ? 0 : 1);
   }
 
   // A comment by its id (of the thread or of a reply in it) or by the number on its card.
@@ -348,6 +349,22 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (_, file) => {
 // Comments people made that Claude hasn't been given yet, whole threads, as the agent text shows them.
 let seen = fs.existsSync(SEEN) ? fs.readFileSync(SEEN, 'utf8').trim() : '';
 let waiter = null;
+// When no page has been open for a while (tabs closed), the open wait ends, so closed pages don't keep a session
+// listening. A page reload or a click to another page reconnects within a second, well inside this grace.
+const CLOSE_GRACE = Number(process.env.LAB_CLOSE_GRACE || 120) * 1000;
+let closedTimer;
+const pagesChanged = () => {
+  clearTimeout(closedTimer);
+  if (clients.size || !waiter) return;
+  closedTimer = setTimeout(() => {
+    if (clients.size || !waiter) return;
+    const w = waiter;
+    waiter = null;
+    clearTimeout(w.timer);
+    w.res.writeHead(410).end('the page was closed');
+    setMode('away');
+  }, CLOSE_GRACE);
+};
 // The agent text of some threads on a page: its page/file lines, then each thread in full.
 async function threadsText(page, threads) {
   const text = await agentText(page);
@@ -510,7 +527,11 @@ const handler = async (req, res) => {
       const client = { res, local: isLoopback(req) };
       res.write(`data: ${state(client.local)}\n\n`);
       clients.add(client);
-      req.on('close', () => clients.delete(client));
+      pagesChanged();
+      req.on('close', () => {
+        clients.delete(client);
+        pagesChanged();
+      });
       return;
     }
     if (pathname === '/_lab/wait') {
@@ -536,6 +557,7 @@ const handler = async (req, res) => {
       };
       waiter = w;
       setMode('listening');
+      pagesChanged(); // no page open yet: the grace starts now
       // Claude stopped listening (the wait was cancelled): the page says so.
       res.on('close', () => {
         if (waiter !== w) return;
