@@ -272,10 +272,21 @@ const sessionFrom = (req) => {
 
 // ---------- live pages and the session that listens ----------
 let session = null;
+// What the page says about Claude: listening (a wait is open), working (it got comments and hasn't waited again
+// yet), or away (no wait, or nothing from it for two minutes after it got comments).
+let mode = 'away';
+let awayTimer;
+const setMode = (m) => {
+  mode = m;
+  clearTimeout(awayTimer);
+  if (m === 'working') awayTimer = setTimeout(() => setMode('away'), 120000);
+  saveServer();
+  broadcast();
+};
 let PORT = Number(opts.port || process.env.PORT || 4400);
 const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, session }, null, 2), 0o600);
 const clients = new Set();
-const state = (local) => JSON.stringify({ ...version, session: session && (local ? session : { name: session.name }) });
+const state = (local) => JSON.stringify({ ...version, mode, session: session && (local ? session : { name: session.name }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
@@ -285,6 +296,8 @@ fs.watch(ROOT, { recursive: true }, (_, file) => {
   clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => {
     fileIndex = null;
+    // The quick model is still at work: the page reloads once, together with its answer (see quick()).
+    if (quickBusy) return (filesWaiting = true);
     version = { ...version, files: version.files + 1 };
     broadcast();
   }, 80);
@@ -322,6 +335,7 @@ async function wake() {
   waiter = null;
   clearTimeout(w.timer);
   w.res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(text);
+  setMode('working');
 }
 
 // ---------- fast path (--fast) ----------
@@ -330,6 +344,8 @@ async function wake() {
 // LAB_FAST_CMD replaces the model command (a shell command; the prompt comes on stdin, the answer's last line is read).
 const FAST = Boolean(opts.fast);
 let quickQueue = Promise.resolve();
+let quickBusy = 0;
+let filesWaiting = false;
 const setComment = (page, id, patch) => {
   const h = db.get(`lab:comments:${page}`);
   if (h?.has(id)) h.set(id, JSON.stringify({ ...JSON.parse(h.get(id)), ...patch }));
@@ -355,6 +371,7 @@ function quickRun(prompt) {
 }
 function quick(page, c) {
   setComment(page, c.id, { quick: 'trying' });
+  quickBusy++;
   quickQueue = quickQueue.then(async () => {
     const block = await threadsText(page, [c.id]);
     const prompt = `You make small changes to the web pages in this folder (${ROOT}) from a person's pin comment.
@@ -379,6 +396,10 @@ ${block}`;
     }
     setComment(page, c.id, { quick: done ? 'done' : 'pass' });
     await persist();
+    if (--quickBusy === 0 && filesWaiting) {
+      filesWaiting = false;
+      version = { ...version, files: version.files + 1 };
+    }
     broadcast();
     wake();
   });
@@ -436,20 +457,28 @@ const handler = async (req, res) => {
         waiter.res.writeHead(409).end('another session is listening now');
       }
       session = sessionFrom(req);
-      saveServer();
-      broadcast();
       const text = await unseen();
-      if (text) return res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(text);
-      const w = { res, timer: setTimeout(() => waiter === w && ((waiter = null), res.writeHead(204).end()), Math.min(Number(timeout) || 1500, 7000) * 1000) };
+      if (text) {
+        setMode('working');
+        return res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(text);
+      }
+      const w = {
+        res,
+        timer: setTimeout(() => {
+          if (waiter !== w) return;
+          waiter = null;
+          res.writeHead(204).end();
+          setMode('away');
+        }, Math.min(Number(timeout) || 1500, 7000) * 1000),
+      };
       waiter = w;
+      setMode('listening');
       // Claude stopped listening (the wait was cancelled): the page says so.
       res.on('close', () => {
         if (waiter !== w) return;
         waiter = null;
         clearTimeout(w.timer);
-        session = null;
-        saveServer();
-        broadcast();
+        setMode('away');
       });
       return;
     }
@@ -473,6 +502,7 @@ const handler = async (req, res) => {
           if (FAST && !agent && !stored.parent && stored.from === 'this computer') quick(key.slice('lab:comments:'.length), stored);
         }
         await persist();
+        if (agent && mode === 'working') setMode('working'); // still at it: restart the two minutes
         broadcast();
         wake();
       }

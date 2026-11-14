@@ -173,9 +173,10 @@
              background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; text-decoration: none; white-space: nowrap; }
       .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
       .listener span { color: var(--_muted); }
+      .listener.idle::before { background: var(--_muted); opacity: .5; }
       kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: 4px; text-align: center;
             background: var(--_soft); color: var(--_muted) !important; }
-      .hint { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
+      .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
               box-shadow: var(--_shadow); padding: 8px 14px; border-radius: 999px; font-size: 13px; pointer-events: none; white-space: nowrap;
               letter-spacing: .005em; animation: lab-fade .2s ease-out; }
       /* 16px fields keep iOS from zooming the page when one is focused. */
@@ -1210,11 +1211,17 @@
           load();
         }
         seen = v.comments;
+        // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;
-        who.replaceChildren(Object.assign(document.createElement('span'), { textContent: 'talking to' }), s ? s.name : 'no Claude session');
-        if (s?.url) Object.assign(who, { href: s.url, target: '_blank' });
+        const mode = s ? v.mode || 'listening' : 'away';
+        const span = (t) => Object.assign(document.createElement('span'), { textContent: t });
+        if (mode === 'listening') who.replaceChildren(span('talking to'), s.name);
+        else if (mode === 'working') who.replaceChildren(s.name, span('is working'));
+        else who.replaceChildren(span('no Claude listening'));
+        who.classList.toggle('idle', mode === 'away');
+        if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
-        who.title = s?.resume || (s ? '' : 'Claude: node local.mjs wait');
+        who.title = mode === 'away' ? 'Ask Claude to run: node local.mjs wait' : s?.resume || '';
         who.hidden = false;
       };
     };
