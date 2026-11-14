@@ -1,0 +1,11 @@
+{
+  "name": "labfb",
+  "owner": { "name": "leonidstern", "url": "https://github.com/LeonidStern" },
+  "plugins": [
+    {
+      "name": "labfb",
+      "source": "./",
+      "description": "Read and answer labfb pin comments: cloud lab links and local mode."
+    }
+  ]
+}
