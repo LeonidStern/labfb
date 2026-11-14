@@ -753,6 +753,7 @@
   let posted = null;
   const still = matchMedia('(prefers-reduced-motion: reduce)');
   function render() {
+    grabbing = false; // a pin being dragged is replaced: its drag ends here
     const prev = layer.querySelector('.card:not(.out), .float:not(.out)');
     layer.replaceChildren();
     const now = on ? draft || openId : null;
@@ -860,21 +861,32 @@
       if (e.button !== 0) return;
       const r = pin.getBoundingClientRect();
       const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
-      const start = { x: e.clientX, y: e.clientY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
+      const start = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
       let moving = false;
+      let last = e;
       grabbing = true;
       pin.setPointerCapture(e.pointerId);
+      // Page coordinates, so the pin stays under the pointer when the page scrolls mid-drag.
+      const place = () => {
+        pin.style.left = `${start.left + last.clientX - start.x + scrollX - start.sx}px`;
+        pin.style.top = `${start.top + last.clientY - start.y + scrollY - start.sy}px`;
+      };
       const move = (ev) => {
+        last = ev;
         if (!moving && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
         moving = true;
         pin.classList.add('dragging');
-        pin.style.left = `${start.left + ev.clientX - start.x}px`;
-        pin.style.top = `${start.top + ev.clientY - start.y}px`;
+        place();
       };
+      const scrolled = () => moving && place();
+      addEventListener('scroll', scrolled, true);
       const up = async (ev) => {
         pin.removeEventListener('pointermove', move);
         pin.removeEventListener('pointerup', up);
         pin.removeEventListener('pointercancel', up);
+        pin.removeEventListener('lostpointercapture', up);
+        removeEventListener('scroll', scrolled, true);
+        if (!grabbing) return; // already ended (the layer was redrawn mid-drag)
         grabbing = false;
         if (!moving) return;
         pin.dataset.dragged = '1'; // the click that follows is the drop, not an open
@@ -897,6 +909,7 @@
       pin.addEventListener('pointermove', move);
       pin.addEventListener('pointerup', up);
       pin.addEventListener('pointercancel', up);
+      pin.addEventListener('lostpointercapture', up);
     });
   }
 
@@ -1206,11 +1219,9 @@
       stream.onmessage = (e) => {
         const v = JSON.parse(e.data);
         if (String(v.files) !== script.dataset.version) return reload();
-        if (seen !== null && v.comments !== seen) {
-          if (busy()) return;
-          load();
-        }
-        seen = v.comments;
+        const fresh = seen !== null && v.comments !== seen;
+        if (!fresh || !busy()) seen = v.comments;
+        if (fresh && !busy()) load();
         // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;
         const mode = s ? v.mode || 'listening' : 'away';

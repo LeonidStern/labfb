@@ -205,6 +205,7 @@ function asText(path, comments, host) {
     const a = c.anchor || {};
     lines.push('', `## ${i + 1}. ${c.name} · ${stamp(c.createdAt)} · id ${c.id}`, `comment: ${body(c.text)}`);
     if (c.from) lines.push(`from: ${c.from}`);
+    if (c.movedAt) lines.push(`pin moved: ${stamp(c.movedAt)} (the spot below is the new one)`);
     if (a.kind === 'image' || a.kind === 'video' || a.kind === 'background') {
       lines.push(`on: ${a.kind}${a.file ? ` "${a.file}" (search the repo's src/ and public/ for it)` : ''}`);
       if (a.src) lines.push(`src: ${a.src}`);
@@ -302,7 +303,7 @@ export async function POST(request) {
     if (!current) return json({ error: 'not found' }, 404);
     const thread = JSON.parse(current);
     if (thread.parent || !body.anchor || typeof body.anchor !== 'object') return json({ error: 'bad move' }, 400);
-    const comment = { ...thread, anchor: cleanAnchor(body.anchor) };
+    const comment = { ...thread, anchor: cleanAnchor(body.anchor), movedAt: new Date().toISOString() };
     await run('HSET', key, id, JSON.stringify(comment));
     return json({ comment });
   }

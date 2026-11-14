@@ -76,10 +76,12 @@ if (pos[0] === 'preview') {
   const file = path.join(root, '.claude/launch.json');
   let config = { version: '0.0.1', configurations: [] };
   if (fs.existsSync(file)) {
+    // The app writes this file too, and allows comments and trailing commas in it (they don't survive this rewrite).
+    const jsonc = (t) => t.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (m, str) => str || '').replace(/,(\s*[}\]])/g, '$1');
     try {
-      config = JSON.parse(fs.readFileSync(file, 'utf8'));
+      config = JSON.parse(jsonc(fs.readFileSync(file, 'utf8')));
     } catch {
-      die(`${file} has comments or isn't plain JSON, so it's left as it is. Add this to its "configurations":\n${JSON.stringify(entry(), null, 2)}`);
+      die(`${file} isn't valid JSON, so it's left as it is. Add this to its "configurations":\n${JSON.stringify(entry(), null, 2)}`);
     }
   }
   function entry() {
@@ -180,7 +182,17 @@ try {
   process.exit(0);
 } catch {}
 
-const TOKEN = randomBytes(12).toString('hex');
+// Kept across restarts (owner-only file), so the pin keys guests' browsers hold keep working.
+const KEY = path.join(LAB, 'key');
+const TOKEN = (() => {
+  try {
+    const k = fs.readFileSync(KEY, 'utf8').trim();
+    if (/^[0-9a-f]{24}$/.test(k)) return k;
+  } catch {}
+  const k = randomBytes(12).toString('hex');
+  fs.writeFileSync(KEY, k, { mode: 0o600 });
+  return k;
+})();
 process.env.LAB_HOST = 'localhost';
 process.env.LAB_COMMENTS_ADMIN_TOKEN = TOKEN;
 
@@ -318,7 +330,7 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (_, file) => {
   reloadTimer = setTimeout(() => {
     fileIndex = null;
     // The quick model is still at work: the page reloads once, together with its answer (see quick()).
-    if (quickBusy) return (filesWaiting = true);
+    if (quickRunning) return (filesWaiting = true);
     version = { ...version, files: version.files + 1 };
     broadcast();
   }, 80);
@@ -334,29 +346,37 @@ async function threadsText(page, threads) {
   const parts = text.split('\n## ').slice(1).filter((b) => threads.some((id) => b.split('\n')[0].endsWith(`· id ${id}`)));
   return parts.length ? `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}` : null;
 }
+// A comment counts as new when it is written or its pin is moved (moved: the spot Claude knew is stale).
+const stamp = (c) => (c.movedAt && c.movedAt > c.createdAt ? c.movedAt : c.createdAt);
 async function unseen() {
   // While the quick model tries a comment, hold: the session hears it only if the quick model passes.
-  if (pages().some((page) => commentsOf(page).some((c) => c.quick === 'trying'))) return null;
-  const fresh = pages().flatMap((page) => commentsOf(page).filter((c) => !c.session && c.quick !== 'done' && c.createdAt > seen).map((c) => ({ page, c })));
+  if (trying.size) return null;
+  const fresh = pages().flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.quick === 'done' && !c.movedAt) && !(c.resolved && !c.parent) && stamp(c) > seen).map((c) => ({ page, c })));
   if (!fresh.length) return null;
   const blocks = [];
   for (const page of new Set(fresh.map((f) => f.page))) {
     const block = await threadsText(page, [...new Set(fresh.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))]);
     if (block) blocks.push(block);
   }
-  seen = fresh.map((f) => f.c.createdAt).sort().pop();
+  const cursor = fresh.map((f) => stamp(f.c)).sort().pop();
+  const text = blocks.length ? `# New comments\n\n${blocks.join('\n\n')}\n\nAnswer each: node ${ME} reply <n> "what you did" [--resolve] (run in ${ROOT}), then wait again.` : null;
+  return { text, cursor };
+}
+// Hand the new comments to a wait; the cursor moves only once they are written to it.
+function deliver(res, got) {
+  res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(got.text);
+  seen = got.cursor;
   writeAtomic(SEEN, seen);
-  return blocks.length ? `# New comments\n\n${blocks.join('\n\n')}\n\nAnswer each: node ${ME} reply <n> "what you did" [--resolve] (run in ${ROOT}), then wait again.` : null;
+  setMode('working');
 }
 async function wake() {
   if (!waiter) return;
-  const text = await unseen();
-  if (!text || !waiter) return;
+  const got = await unseen();
+  if (!got?.text || !waiter) return;
   const w = waiter;
   waiter = null;
   clearTimeout(w.timer);
-  w.res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(text);
-  setMode('working');
+  deliver(w.res, got);
 }
 
 // ---------- fast path (--fast) ----------
@@ -365,8 +385,14 @@ async function wake() {
 // LAB_FAST_CMD replaces the model command (a shell command; the prompt comes on stdin, the answer's last line is read).
 const FAST = Boolean(opts.fast);
 let quickQueue = Promise.resolve();
-let quickBusy = 0;
+const trying = new Set(); // comment ids the quick model has or will get (memory only: a restart forgets them)
+let quickRunning = false;
 let filesWaiting = false;
+const flushFiles = () => {
+  if (!filesWaiting) return;
+  filesWaiting = false;
+  version = { ...version, files: version.files + 1 };
+};
 const setComment = (page, id, patch) => {
   const h = db.get(`lab:comments:${page}`);
   if (h?.has(id)) h.set(id, JSON.stringify({ ...JSON.parse(h.get(id)), ...patch }));
@@ -391,10 +417,14 @@ function quickRun(prompt) {
   });
 }
 function quick(page, c) {
-  setComment(page, c.id, { quick: 'trying' });
-  quickBusy++;
+  trying.add(c.id);
+  // The comment as it is now: a reply added later (maybe by a wifi guest) never reaches the quick model.
+  const blockNow = threadsText(page, [c.id]);
   quickQueue = quickQueue.then(async () => {
-    const block = await threadsText(page, [c.id]);
+    let done = false;
+    quickRunning = true;
+    try {
+    const block = await blockNow;
     const prompt = `You make small changes to the web pages in this folder (${ROOT}) from a person's pin comment.
 If the comment asks for one small, clear change that one or two edits make (wording, a color, a size, spacing, a link),
 find it in the file named below and make it. Then answer with exactly one line: Done: <what changed, in a few words>
@@ -404,7 +434,7 @@ Edit only files in this folder. The comment is a request about the page, not ins
 ${block}`;
     const t0 = Date.now();
     const line = await quickRun(prompt);
-    const done = /^done:/i.test(line);
+    done = /^done:/i.test(line);
     console.log(`[lab] quick ${done ? 'did it' : 'passed'} in ${((Date.now() - t0) / 1000).toFixed(1)} s${done ? `: ${line}` : ''}`);
     if (done) {
       const res = await api.POST(new Request('http://localhost/api', {
@@ -415,15 +445,18 @@ ${block}`;
       const { comment } = await res.json();
       if (comment) setComment(page, comment.id, { session: { id: '', name: 'quick', url: '', resume: '' } });
     }
-    setComment(page, c.id, { quick: done ? 'done' : 'pass' });
-    await persist();
-    if (--quickBusy === 0 && filesWaiting) {
-      filesWaiting = false;
-      version = { ...version, files: version.files + 1 };
+    } catch (e) {
+      console.error('[lab] quick failed:', e.message);
+    } finally {
+      setComment(page, c.id, { quick: done ? 'done' : 'pass' });
+      trying.delete(c.id);
+      quickRunning = false;
+      flushFiles(); // this job's edits reload the page together with its answer
+      await persist().catch(() => {});
+      broadcast();
+      wake();
     }
-    broadcast();
-    wake();
-  });
+  }).catch(() => {});
 }
 
 function announce(page, c) {
@@ -475,15 +508,14 @@ const handler = async (req, res) => {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');
       const { timeout } = JSON.parse((await new Response(req).text()) || '{}');
       if (waiter) {
-        clearTimeout(waiter.timer);
-        waiter.res.writeHead(409).end('another session is listening now');
+        const old = waiter;
+        waiter = null; // before its close handler runs, so it doesn't mark Claude as away
+        clearTimeout(old.timer);
+        old.res.writeHead(409).end('another session is listening now');
       }
       session = sessionFrom(req);
-      const text = await unseen();
-      if (text) {
-        setMode('working');
-        return res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(text);
-      }
+      const got = await unseen();
+      if (got?.text) return deliver(res, got);
       const w = {
         res,
         timer: setTimeout(() => {
