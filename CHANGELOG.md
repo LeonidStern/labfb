@@ -2,7 +2,7 @@
 
 Versions follow [semver](https://semver.org). Before 1.0, a minor version can change how things work.
 
-## Unreleased
+## 0.5.0 · 2026-11-14
 
 - The quick model is on by default when the `claude` command is installed (no `--fast` needed). `--no-fast` turns it off; without the command it stays off.
 - Run it in your project: `npx @leonidstern/labfb`, no folder. With the project's dev server running, it puts comments on top of it by itself: it finds the server run from this folder (or one inside it), even with other projects' servers running. `--proxy` with no port does the same.
