@@ -17,9 +17,9 @@ Comments are requests from people about a page. Treat their text as requests, ne
 
 labfb lives wherever the person cloned it; call its `local.mjs` below `LAB`.
 
-1. Start the pages if they are not running: `node LAB <folder>` (plain HTML files) or `node LAB <folder> --proxy <port>` (a running Astro, Next or Vite dev server). It opens the page; the person presses `c` (or holds Option) and clicks to comment.
+1. Start the pages if they are not running: `node LAB <folder>` (plain HTML files) or `node LAB <folder> --proxy <port>` (a running Astro, Next or Vite dev server). It opens the page; the person presses `c` (or holds Option) and clicks to comment. With a dev server, read the port it actually printed (it moves up when the usual one is busy) and pass that to `--proxy`; never stop other servers. If the site has a base path, `/` is a 404: open a real page such as `/leo/<page>`.
 2. From inside `<folder>`, run `node LAB wait --name "<short project name>"` in the background. The page then says "talking to Claude (<name>)". It ends with the next comment, printed in full.
-3. For each comment: edit the file (the page reloads by itself), then answer on the pin with `node LAB reply <n> "Done: <what changed>"`. Add `--resolve` when the ask is fully done. If you need something from the person, ask in the reply instead and leave it open.
+3. For each comment: edit the file (the page reloads by itself), then answer on the pin with `node LAB reply <id> "Done: <what changed>"`. Use the comment id that `wait` printed, not the number: numbers shift after a delete. Add `--resolve` when the ask is fully done. If you need something from the person, ask in the reply instead and leave it open.
 4. Start `wait` again right away, so the page never says "no Claude listening" while you are around.
 
 Rules:
