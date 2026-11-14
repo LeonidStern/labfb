@@ -55,30 +55,30 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
 
 ## Local lab
 
-Install the Claude Code plugin once:
+Paste this into Claude Code in your project. It is the whole setup.
+
+```text
+Start labfb (https://github.com/leonidstern/labfb) on this project and listen to my comments.
+
+1. Run `npx @leonidstern/labfb` here in the background. It finds this project's dev server, or serves plain HTML files.
+   If it says the dev server isn't running, start it the way this project does, then run it again. Never stop other servers.
+2. Run `npx @leonidstern/labfb wait` in the background, with --name set to this project's name. It ends with my next comment.
+3. For each comment, change what it asks, then answer on the pin: `npx @leonidstern/labfb reply <id> "Done: …"`, with the id
+   that wait printed. Add --resolve when it's fully done; if you need something from me, ask in the reply instead.
+4. Run wait again right away. Stop when wait says the page was closed.
+```
+
+Using it often? Install the plugin once, then just say **"start labfb"** in any project:
 
 ```text
 /plugin marketplace add leonidstern/labfb
 /plugin install labfb@leonidstern
 ```
 
-Then, in any project, tell Claude **"start labfb"**. It runs labfb there, opens the page and listens: you comment, it fixes the file, the page reloads, and the reply shows on the pin.
-
-Without Claude, in your project:
-
-```sh
-npx @leonidstern/labfb
-```
+Without Claude, run `npx @leonidstern/labfb` in your project:
 
 - **Dev server (Astro, Next, Vite…):** start it as usual. labfb finds the one running from this project, even with other projects' servers running, and puts comments on top. `--proxy 4321` picks a port yourself.
 - **Plain HTML files:** served as they are. Pages somewhere else: `npx @leonidstern/labfb dist`.
-
-No plugin? Paste this into Claude Code in the project:
-
-```text
-Run `npx @leonidstern/labfb` here, then `npx @leonidstern/labfb wait` in the background. Fix what each comment asks,
-answer on the pin with `npx @leonidstern/labfb reply <id> "Done: …"` (the id that wait printed), and wait again.
-```
 
 - **Comment:** press `c` (or hold Option) and click. Drag to mark an area.
 - **Options:** `--fast` for the quick model, `--wifi` for a phone at home. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
