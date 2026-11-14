@@ -17,7 +17,8 @@
   window.__labComments = true;
 
   const API = script?.dataset.api || '/_lab/api/comments';
-  const page = script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
+  const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
+  let page = pageNow();
   const store = {
     get: (k) => {
       try {
@@ -424,6 +425,7 @@
         const m = n.closest?.('img, video') || n;
         return fileHint(mediaSrc(m)) === anchor.file;
       }
+      if (anchor.element && openingTag(n) !== anchor.element) return false;
       if (anchor.quote?.exact) return (n.textContent || '').includes(anchor.quote.exact);
       return true;
     };
@@ -561,10 +563,17 @@
   // lab host from the deployment's own address, so the first answer decides: no API here, no layer.
   let gone = false;
   let loaded = false;
+  let retried = false;
+  const typed = () => Boolean(root.activeElement) || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
   async function load() {
     try {
       const res = await fetch(`${API}?page=${encodeURIComponent(page)}`, { headers: headers(), cache: 'no-store' });
       if (res.status === 404 && !loaded && script?.dataset.enable !== 'always') {
+        if (!retried) {
+          retried = true;
+          setTimeout(load, 1500);
+          return;
+        }
         gone = true;
         on = false;
         document.documentElement.classList.remove('lab-pinning');
@@ -580,7 +589,7 @@
     } catch {
       // Keep what is already on screen when a refresh fails.
     }
-    render();
+    if (!typed()) render(); // someone is typing: the new comments show on the next render, the text stays
   }
 
   async function send(payload) {
@@ -622,13 +631,14 @@
       .indexOf(c) + 1;
 
   // Unread: comments and replies by someone else that this browser hasn't opened yet (kept per page).
-  const seenKey = `lab-seen:${page}`;
-  const seen = new Set(store.get(seenKey).split(',').filter(Boolean));
+  const seenKey = () => `lab-seen:${page}`;
+  const readSeen = () => new Set(store.get(seenKey()).split(',').filter(Boolean));
+  let seen = readSeen();
   const isNew = (c) => !seen.has(c.id) && c.name !== store.get('lab-name');
   const unread = (c) => [c, ...repliesOf(c.id)].filter(isNew);
   const markSeen = (items) => {
     for (const item of items) seen.add(item.id);
-    store.set(seenKey, [...seen].join(','));
+    store.set(seenKey(), [...seen].join(','));
   };
   const repliesOf = (id) => comments.filter((c) => c.parent === id);
   // Pins show who left them: the first letter of the name.
@@ -851,16 +861,24 @@
     if (isAdmin) {
       const actions = el('div', { class: 'row' });
       const resolve = el('button', { class: 'btn', type: 'button' }, c.resolved ? 'reopen' : 'resolve');
+      const failed = (btn) => (btn.textContent = 'failed, try again');
       resolve.addEventListener('click', async () => {
-        const { comment } = await send({ action: c.resolved ? 'reopen' : 'resolve', id: c.id });
-        Object.assign(c, comment);
-        render();
+        try {
+          const { comment } = await send({ action: c.resolved ? 'reopen' : 'resolve', id: c.id });
+          Object.assign(c, comment);
+          render();
+        } catch {
+          failed(resolve);
+        }
       });
       const del = el('button', { class: 'btn', type: 'button' }, 'delete');
       del.addEventListener('click', async () => {
         if (!confirm('delete this comment and its replies?')) return;
-        for (const r of repliesOf(c.id)) await send({ action: 'delete', id: r.id });
-        await send({ action: 'delete', id: c.id });
+        try {
+          await send({ action: 'delete', id: c.id }); // the API deletes the replies with it
+        } catch {
+          return failed(del);
+        }
         comments = comments.filter((x) => x.id !== c.id && x.parent !== c.id);
         openId = null;
         render();
@@ -906,7 +924,8 @@
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
   document.addEventListener('keydown', (e) => {
     if (gone) return;
-    if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e)) {
+    const inOtherWidget = document.activeElement?.localName.includes('-') && document.activeElement !== host; // e.g. an input in a closed shadow root
+    if ((e.key === 'c' || e.key === 'C' || e.code === 'KeyC') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!on);
       return;
@@ -921,7 +940,7 @@
   // Always ready to pin: a click on the page (not on a link or control) opens a new comment there.
   // Alt/Option-click pins on links and controls too. With a comment open, the first click outside only closes it.
   const INTERACTIVE =
-    'a, button, input, textarea, select, label, summary, video[controls], audio, iframe, [contenteditable], [role="button"], [role="link"], [onclick]';
+    'a, button, input, textarea, select, label, summary, video[controls], audio, iframe, [contenteditable], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"], [tabindex]:not([tabindex="-1"]), [onclick]';
   // Drag (mouse or pen) to mark an area instead of a point. Touch keeps scrolling.
   let drag = null;
   let afterDrag = false;
@@ -1002,6 +1021,7 @@
   document.addEventListener('click', (e) => {
     if (e.composedPath().includes(host)) return;
     if (draft || openId) {
+      if ([...root.querySelectorAll('textarea')].some((t) => t.value.trim())) return; // typed text stays; Escape discards it
       draft = null;
       openId = null;
       render();
@@ -1025,6 +1045,33 @@
     });
   };
   addEventListener('resize', reflow);
+  addEventListener('scroll', (e) => e.target !== document && !host.contains(e.target) && reflow(), { capture: true, passive: true });
+
+  // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
+  // and the layer comes back if the page swapped out <body>.
+  const navigated = () => {
+    if (gone) return;
+    if (!host.isConnected && document.body) document.body.append(host);
+    if (!fonts.isConnected) document.head.append(fonts);
+    if (pageNow() === page) return;
+    page = pageNow();
+    seen = readSeen();
+    comments = [];
+    draft = null;
+    openId = null;
+    render();
+    load();
+  };
+  for (const m of ['pushState', 'replaceState']) {
+    const original = history[m];
+    history[m] = function (...args) {
+      const out = original.apply(this, args);
+      queueMicrotask(navigated);
+      return out;
+    };
+  }
+  addEventListener('popstate', navigated);
+  document.addEventListener('astro:after-swap', navigated);
   // Pick up comments others left while this tab was in the background.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && !draft && !root.activeElement) load();
