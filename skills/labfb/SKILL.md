@@ -37,9 +37,10 @@ Run it as `npx @leonidstern/labfb` (below `LAB`). From a clone of the repo, `nod
 When the person says "use lab", "in lab" or "show it in lab", show the page in labfb, not as an Artifact. The page lives on this computer, and their comments come back to you as pins.
 
 1. Write the page as an `.html` file. Put it in the project you're working in, next to its pages. With no project, use a `lab-pages/` folder in the working directory. One file per page, with a clear name (`pricing.html`), and a `<title>`.
-2. Run `LAB` in the background from that folder (or `LAB <folder>`). It opens the page. If a lab already runs there, it says so: open `http://localhost:<its port>/<file name>` yourself.
-3. Give the person the page's URL in one line, then listen and answer as in Local lab, steps 2 to 4.
-4. For later changes, edit the file. The page reloads by itself, so there's nothing to republish.
+2. Run `LAB --no-open` in the background from that folder (or `LAB <folder> --no-open`) and read the port it prints. If a lab already runs there, it says so and prints its port.
+3. Show the page beside the chat, the way an Artifact shows. In the Claude desktop app, open `http://localhost:<port>/<file name>` in its built-in browser pane (the Claude_Browser tools: `preview_start` with the `url`, or `navigate` when a tab is open) and bring that pane to the front. Anywhere else, run `LAB` without `--no-open` so it opens the person's browser. Pins work in both.
+4. Give the person the page's URL in one line, then listen and answer as in Local lab, steps 2 to 4.
+5. For later changes, edit the file. The page reloads by itself, so there's nothing to republish.
 
 It's only on this computer. For a phone at home, add `--wifi`. To share with other people, use the cloud lab, or an Artifact if they ask for one.
 
