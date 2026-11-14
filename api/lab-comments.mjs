@@ -76,6 +76,12 @@ function adminFor(request, path) {
 
 const isAdmin = (request, path) => Boolean(adminFor(request, path));
 
+// The person who starts a thread gets a key for it (kept in their browser), so they can drag its pin later.
+// Signed like admin keys: nothing extra is stored.
+const editKey = (path, id) =>
+  process.env.LAB_COMMENTS_ADMIN_TOKEN &&
+  createHmac('sha256', process.env.LAB_COMMENTS_ADMIN_TOKEN).update(`lab-edit:${path}:${id}`).digest('base64url').slice(0, 24);
+
 // One line: names and anchor fields can't break into the agent text as a fake heading or field.
 const clean = (value, max) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '');
 const cleanText = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
@@ -287,6 +293,20 @@ export async function POST(request) {
     return json({ comment });
   }
 
+  // Move a pin: the thread's starter (with its key) or an admin. The spot is replaced, nothing else changes.
+  if (body.action === 'move') {
+    const id = clean(body.id, 40);
+    const edit = editKey(path, id);
+    if (!isAdmin(request, path) && !(edit && typeof body.edit === 'string' && sameKey(body.edit, edit))) return json({ error: 'forbidden' }, 403);
+    const current = await run('HGET', key, id);
+    if (!current) return json({ error: 'not found' }, 404);
+    const thread = JSON.parse(current);
+    if (thread.parent || !body.anchor || typeof body.anchor !== 'object') return json({ error: 'bad move' }, 400);
+    const comment = { ...thread, anchor: cleanAnchor(body.anchor) };
+    await run('HSET', key, id, JSON.stringify(comment));
+    return json({ comment });
+  }
+
   const name = clean(body.name, MAX.name);
   const text = cleanText(body.text, MAX.text);
   if (!name || !text) return json({ error: 'name and text are required' }, 400);
@@ -333,5 +353,6 @@ export async function POST(request) {
   };
   await run('HSET', key, comment.id, JSON.stringify(comment));
   if (thread?.resolved && !isAdmin(request, path)) await run('HSET', key, parent, JSON.stringify({ ...thread, resolved: false, resolvedBy: undefined }));
-  return json({ comment }, 201);
+  const edit = parent ? null : editKey(path, comment.id);
+  return json(edit ? { comment, edit } : { comment }, 201);
 }

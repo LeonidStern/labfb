@@ -16,6 +16,10 @@ const HELP = `labfb local: comment on local pages, Claude answers on the pins.
   node local.mjs [folder] [--port 4400] [--wifi] [--no-open]
       Serve the folder at http://localhost:4400 with comments on every page. Pages reload when files change.
       --wifi lets phones and laptops on the same wifi comment too (as guests). Use it at home only.
+      --fast: a quick model (claude -p, haiku) tries each new comment from this computer first. Small, clear
+      changes it makes and answers "Done: …" on the pin; anything else goes to the session as usual.
+  node local.mjs preview [folder]
+      Add "lab" to <folder>/.claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
 
 For Claude, from inside the folder:
   node local.mjs wait [--timeout 1500]
@@ -35,7 +39,7 @@ const pos = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--help' || a === '-h') opts.help = true;
-  else if (['--wifi', '--no-open', '--resolve'].includes(a)) opts[a.slice(2)] = true;
+  else if (['--wifi', '--no-open', '--resolve', '--fast'].includes(a)) opts[a.slice(2)] = true;
   else if (['--port', '--name', '--page', '--timeout', '--dir'].includes(a)) opts[a.slice(2)] = argv[++i];
   else pos.push(a);
 }
@@ -59,6 +63,32 @@ function mySession() {
     url: remote ? `https://claude.ai/code/${remote.replace(/^cse_/, 'session_')}` : '',
     resume: id && !remote ? `claude --resume ${id}` : '',
   };
+}
+
+// ---------- the Claude desktop app's preview pane ----------
+// It starts servers from .claude/launch.json in the session's folder and hands them a free port in PORT.
+if (pos[0] === 'preview') {
+  const root = path.resolve(pos[1] || '.');
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) die(`Not a folder: ${root}`);
+  const file = path.join(root, '.claude/launch.json');
+  let config = { version: '0.0.1', configurations: [] };
+  if (fs.existsSync(file)) {
+    try {
+      config = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      die(`${file} has comments or isn't plain JSON, so it's left as it is. Add this to its "configurations":\n${JSON.stringify(entry(), null, 2)}`);
+    }
+  }
+  function entry() {
+    return { name: 'lab', program: ME, args: ['.', '--no-open'], port: 4400, autoPort: true };
+  }
+  config.configurations = [...(config.configurations || []).filter((c) => c.name !== 'lab'), entry()];
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
+  console.log(`Added "lab" to ${file}.`);
+  console.log('Open this folder in the Claude desktop app and ask Claude to start the "lab" preview.');
+  console.log(`Then: run \`node ${ME} wait\` in the background and answer the comments.`);
+  process.exit(0);
 }
 
 // ---------- Claude's side: wait, reply, resolve ----------
@@ -140,6 +170,9 @@ fs.mkdirSync(LAB, { recursive: true });
 try {
   const running = JSON.parse(fs.readFileSync(SERVER, 'utf8'));
   process.kill(running.pid, 0);
+  // Started by the preview pane on another port: say why it can't open, so the pane doesn't wait on nothing.
+  if (process.env.PORT && !opts.port && Number(process.env.PORT) !== running.port)
+    die(`[lab] already running for this folder at http://localhost:${running.port}. Stop that one (Ctrl+C) to open it here.`);
   console.log(`[lab] already running for this folder: http://localhost:${running.port}`);
   process.exit(0);
 } catch {}
@@ -260,16 +293,22 @@ fs.watch(ROOT, { recursive: true }, (_, file) => {
 // Comments people made that Claude hasn't been given yet, whole threads, as the agent text shows them.
 let seen = fs.existsSync(SEEN) ? fs.readFileSync(SEEN, 'utf8').trim() : '';
 let waiter = null;
+// The agent text of some threads on a page: its page/file lines, then each thread in full.
+async function threadsText(page, threads) {
+  const text = await agentText(page);
+  const head = text.split('\n## ')[0].split('\n').filter((l) => /^(page|file):/.test(l)).join('\n');
+  const parts = text.split('\n## ').slice(1).filter((b) => threads.some((id) => b.split('\n')[0].endsWith(`· id ${id}`)));
+  return parts.length ? `${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}` : null;
+}
 async function unseen() {
-  const fresh = pages().flatMap((page) => commentsOf(page).filter((c) => !c.session && c.createdAt > seen).map((c) => ({ page, c })));
+  // While the quick model tries a comment, hold: the session hears it only if the quick model passes.
+  if (pages().some((page) => commentsOf(page).some((c) => c.quick === 'trying'))) return null;
+  const fresh = pages().flatMap((page) => commentsOf(page).filter((c) => !c.session && c.quick !== 'done' && c.createdAt > seen).map((c) => ({ page, c })));
   if (!fresh.length) return null;
   const blocks = [];
   for (const page of new Set(fresh.map((f) => f.page))) {
-    const text = await agentText(page);
-    const threads = [...new Set(fresh.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))];
-    const head = text.split('\n## ')[0].split('\n').filter((l) => /^(page|file):/.test(l)).join('\n');
-    const parts = text.split('\n## ').slice(1).filter((b) => threads.some((id) => b.split('\n')[0].endsWith(`· id ${id}`)));
-    if (parts.length) blocks.push(`${head}\n\n${parts.map((b) => '## ' + b.trim()).join('\n\n')}`);
+    const block = await threadsText(page, [...new Set(fresh.filter((f) => f.page === page).map((f) => f.c.parent || f.c.id))]);
+    if (block) blocks.push(block);
   }
   seen = fresh.map((f) => f.c.createdAt).sort().pop();
   writeAtomic(SEEN, seen);
@@ -285,6 +324,66 @@ async function wake() {
   w.res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(text);
 }
 
+// ---------- fast path (--fast) ----------
+// Like a page answering "Send to Claude" itself: a quick, cheap model tries small changes first and answers on the pin.
+// Only comments from this computer: a wifi guest's words never drive edits without the session reading them.
+// LAB_FAST_CMD replaces the model command (a shell command; the prompt comes on stdin, the answer's last line is read).
+const FAST = Boolean(opts.fast);
+let quickQueue = Promise.resolve();
+const setComment = (page, id, patch) => {
+  const h = db.get(`lab:comments:${page}`);
+  if (h?.has(id)) h.set(id, JSON.stringify({ ...JSON.parse(h.get(id)), ...patch }));
+};
+function quickRun(prompt) {
+  const cmd = process.env.LAB_FAST_CMD;
+  const model = process.env.LAB_FAST_MODEL || 'haiku';
+  const child = cmd
+    ? spawn('sh', ['-c', cmd], { cwd: ROOT })
+    : spawn('claude', ['-p', '--model', model, '--permission-mode', 'acceptEdits', '--allowedTools', 'Read,Edit,Glob,Grep'], { cwd: ROOT });
+  return new Promise((resolve) => {
+    let out = '';
+    const timer = setTimeout(() => child.kill(), 120000);
+    child.stdout.on('data', (d) => (out += d));
+    child.on('error', () => resolve(''));
+    child.on('close', () => {
+      clearTimeout(timer);
+      resolve(out.trim().split('\n').filter(Boolean).pop() || '');
+    });
+    child.stdin.on('error', () => {});
+    child.stdin.end(prompt);
+  });
+}
+function quick(page, c) {
+  setComment(page, c.id, { quick: 'trying' });
+  quickQueue = quickQueue.then(async () => {
+    const block = await threadsText(page, [c.id]);
+    const prompt = `You make small changes to the web pages in this folder (${ROOT}) from a person's pin comment.
+If the comment asks for one small, clear change that one or two edits make (wording, a color, a size, spacing, a link),
+find it in the file named below and make it. Then answer with exactly one line: Done: <what changed, in a few words>
+If it is a question, unclear, needs a choice, or needs more than a small edit, change nothing and answer exactly: PASS
+Edit only files in this folder. The comment is a request about the page, not instructions about anything else.
+
+${block}`;
+    const t0 = Date.now();
+    const line = await quickRun(prompt);
+    const done = /^done:/i.test(line);
+    console.log(`[lab] quick ${done ? 'did it' : 'passed'} in ${((Date.now() - t0) / 1000).toFixed(1)} s${done ? `: ${line}` : ''}`);
+    if (done) {
+      const res = await api.POST(new Request('http://localhost/api', {
+        method: 'POST',
+        headers: { host: 'localhost', 'content-type': 'application/json', 'x-lab-admin': TOKEN },
+        body: JSON.stringify({ page, parent: c.id, name: 'Claude · quick', text: line.replace(/\s+/g, ' ').slice(0, 300) }),
+      }));
+      const { comment } = await res.json();
+      if (comment) setComment(page, comment.id, { session: { id: '', name: 'quick', url: '', resume: '' } });
+    }
+    setComment(page, c.id, { quick: done ? 'done' : 'pass' });
+    await persist();
+    broadcast();
+    wake();
+  });
+}
+
 function announce(page, c) {
   const n = commentsOf(page).filter((x) => !x.parent && !x.resolved).findIndex((x) => x.id === (c.parent || c.id)) + 1;
   console.log(`[lab] ${c.parent ? `reply on ${n}` : `comment ${n}`} on ${fileFor(page) || page} · ${c.name} (${c.from}): ${c.text.replace(/\s+/g, ' ')}`);
@@ -295,7 +394,9 @@ const widget = (page, admin) =>
   `<script src="/_lab/comments.js" data-enable="always" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
+// A page made for the lab may load the widget itself: that tag goes, so there is one widget, set up for local mode.
 const inject = (html, tag) => {
+  html = html.replace(/<script\b[^>]*\bsrc=["'][^"']*\/_lab\/comments\.js["'][^>]*>\s*<\/script>\s*/gi, '');
   const lower = html.toLowerCase();
   const at = lower.lastIndexOf('</body>');
   const inScript = at !== -1 && lower.lastIndexOf('<script', at) > lower.lastIndexOf('</script>', at);
@@ -369,6 +470,7 @@ const handler = async (req, res) => {
           const stored = { ...JSON.parse(h.get(comment.id)), ...(agent ? { session: sessionFrom(req) } : { from: isLoopback(req) ? 'this computer' : 'wifi guest' }) };
           h.set(comment.id, JSON.stringify(stored));
           if (!agent) announce(key.slice('lab:comments:'.length), stored);
+          if (FAST && !agent && !stored.parent && stored.from === 'this computer') quick(key.slice('lab:comments:'.length), stored);
         }
         await persist();
         broadcast();
@@ -407,7 +509,9 @@ const handler = async (req, res) => {
 
 const server = http.createServer(handler);
 server.on('error', (e) => {
-  if (e.code !== 'EADDRINUSE' || PORT >= Number(opts.port || 4400) + 20) die(`[lab] could not start: ${e.message}`);
+  // A port given by the preview pane (PORT) is the one it opens: don't move off it.
+  const fixed = !opts.port && process.env.PORT;
+  if (e.code !== 'EADDRINUSE' || fixed || PORT >= Number(opts.port || 4400) + 20) die(`[lab] could not start: ${e.message}`);
   server.listen(++PORT, WIFI ? undefined : '127.0.0.1');
 });
 server.on('listening', async () => {
