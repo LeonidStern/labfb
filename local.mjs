@@ -2,6 +2,7 @@
 // labfb local: pin comments on a folder of local pages and talk them through with Claude. No deploy, no account.
 // Same widget and API as the lab domain (public/_lab/comments.js, api/lab-comments.mjs). Node 20+, no packages.
 import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,6 +17,8 @@ const HELP = `labfb local: comment on local pages, Claude answers on the pins.
   node local.mjs [folder] [--port 4400] [--wifi] [--no-open]
       Serve the folder at http://localhost:4400 with comments on every page. Pages reload when files change.
       --wifi lets phones and laptops on the same wifi comment too (as guests). Use it at home only.
+      --proxy 4321: put comments on a running dev server (Astro, Next, Vite…) instead of plain files.
+      Its own live reload keeps working; comments are saved in <folder>/.lab as usual.
       --fast: a quick model (claude -p, haiku) tries each new comment from this computer first. Small, clear
       changes it makes and answers "Done: …" on the pin; anything else goes to the session as usual.
   node local.mjs preview [folder]
@@ -40,7 +43,7 @@ for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--help' || a === '-h') opts.help = true;
   else if (['--wifi', '--no-open', '--resolve', '--fast'].includes(a)) opts[a.slice(2)] = true;
-  else if (['--port', '--name', '--page', '--timeout', '--dir'].includes(a)) opts[a.slice(2)] = argv[++i];
+  else if (['--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a)) opts[a.slice(2)] = argv[++i];
   else pos.push(a);
 }
 if (opts.help) {
@@ -80,7 +83,7 @@ if (pos[0] === 'preview') {
     }
   }
   function entry() {
-    return { name: 'lab', program: ME, args: ['.', '--no-open'], port: 4400, autoPort: true };
+    return { name: 'lab', program: ME, args: ['.', '--no-open', ...(opts.proxy ? ['--proxy', opts.proxy] : [])], port: 4400, autoPort: true };
   }
   config.configurations = [...(config.configurations || []).filter((c) => c.name !== 'lab'), entry()];
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -218,7 +221,23 @@ const fileFor = (page) => {
     };
     walk(ROOT, 0);
   }
-  return fileIndex.get(page);
+  return fileIndex.get(page) || sourceFor(page);
+};
+// A dev server's page: guess its source file (Astro, Next, plain pages folders), with or without a base path.
+const sourceFor = (page) => {
+  if (!PROXY) return null;
+  const segs = page.split('/').filter(Boolean);
+  const rels = [segs.join('/'), segs.slice(1).join('/')].map((r) => r.replace(/(^|\/)index$/, '')).filter((r, i, a) => a.indexOf(r) === i);
+  for (const rel of rels) {
+    const pre = rel ? rel + '/' : '';
+    const tries = ['astro', 'md', 'mdx', 'tsx', 'jsx', 'html', 'vue', 'svelte'].flatMap((x) => [
+      rel && `src/pages/${rel}.${x}`, `src/pages/${pre}index.${x}`, `pages/${pre}index.${x}`, rel && `pages/${rel}.${x}`,
+      `app/${pre}page.${x}`, `src/app/${pre}page.${x}`, `src/routes/${pre}+page.${x}`,
+    ]);
+    const hit = tries.find((t) => t && fs.existsSync(path.join(ROOT, t)));
+    if (hit) return hit;
+  }
+  return null;
 };
 
 let origin = '';
@@ -244,6 +263,7 @@ async function persist() {
 // Only names that point at this computer (no DNS rebinding), only pages served from here may post (no cross-site
 // comments), only this computer gets the admin key. Wifi guests can read the folder's pages and comment.
 const WIFI = Boolean(opts.wifi);
+const PROXY = opts.proxy ? new URL(/^\d+$/.test(opts.proxy) ? `http://localhost:${opts.proxy}` : opts.proxy) : null;
 const wifiAddrs = () => Object.values(os.networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal).map((a) => a.address);
 const hostName = os.hostname().replace(/\.local$/, '').toLowerCase();
 const allowedHost = (h = '') => {
@@ -291,7 +311,8 @@ const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
 let reloadTimer;
-fs.watch(ROOT, { recursive: true }, (_, file) => {
+// With --proxy the dev server reloads its own pages.
+if (!PROXY) fs.watch(ROOT, { recursive: true }, (_, file) => {
   if (!file || file.split(path.sep).some((s) => s.startsWith('.') || s === 'node_modules')) return;
   clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => {
@@ -435,9 +456,10 @@ const handler = async (req, res) => {
   try {
     const url = new URL(req.url, origin);
     if (!allowedHost(req.headers.host)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('unknown host');
-    if (req.method !== 'GET' && req.method !== 'HEAD' && (!sameOrigin(req) || !/^application\/json/.test(req.headers['content-type'] || '')))
+    if (req.method !== 'GET' && req.method !== 'HEAD' && (!PROXY || url.pathname.startsWith('/_lab/')) && (!sameOrigin(req) || !/^application\/json/.test(req.headers['content-type'] || '')))
       return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
     const pathname = decodeURIComponent(url.pathname);
+    if (PROXY && !pathname.startsWith('/_lab/')) return proxyTo(req, res, url);
     // .lab (comments, admin key), .git, .env and other dot files are never served.
     if (pathname.split('/').some((s) => s.startsWith('.'))) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
 
@@ -537,7 +559,54 @@ const handler = async (req, res) => {
   }
 };
 
+// ---------- in front of a dev server (--proxy) ----------
+// Pages pass through with the widget added; everything else (scripts, images, the dev server's own live reload
+// over a websocket) goes through untouched.
+const pageKey = (pathname) => keyFor(pathname.replace(/^\/+|\/+$/g, '').replace(/\.html?$/i, '') || 'index');
+function proxyTo(req, res, url) {
+  const headers = { ...req.headers, host: PROXY.host, 'accept-encoding': 'identity' };
+  if (headers.origin) headers.origin = PROXY.origin;
+  if (headers.referer) headers.referer = PROXY.origin + new URL(headers.referer, origin).pathname;
+  const up = http.request({ hostname: PROXY.hostname, port: PROXY.port || 80, path: url.pathname + url.search, method: req.method, headers }, (r) => {
+    const html = /text\/html/i.test(r.headers['content-type'] || '') && req.method === 'GET';
+    if (!html) {
+      res.writeHead(r.statusCode, r.headers);
+      return r.pipe(res);
+    }
+    const chunks = [];
+    r.on('data', (c) => chunks.push(c));
+    r.on('end', () => {
+      const out = { ...r.headers, 'cache-control': 'no-store' };
+      delete out['content-length'];
+      delete out['content-encoding'];
+      delete out['content-security-policy']; // it would block the widget's script
+      res.writeHead(r.statusCode, out);
+      res.end(inject(Buffer.concat(chunks).toString('utf8'), widget(pageKey(url.pathname), isLoopback(req))));
+    });
+  });
+  up.on('error', (e) => {
+    if (res.headersSent) return res.destroy();
+    res.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' }).end(`[lab] no answer from the dev server at ${PROXY.origin} (${e.code}). Start it, then reload.`);
+  });
+  req.pipe(up);
+}
+
 const server = http.createServer(handler);
+server.on('upgrade', (req, socket, head) => {
+  if (!PROXY || !allowedHost(req.headers.host)) return socket.destroy();
+  const up = net.connect(Number(PROXY.port) || 80, PROXY.hostname, () => {
+    const lines = [];
+    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+      const [k, v] = [req.rawHeaders[i], req.rawHeaders[i + 1]];
+      lines.push(`${k}: ${/^host$/i.test(k) ? PROXY.host : /^origin$/i.test(k) ? PROXY.origin : v}`);
+    }
+    up.write(`${req.method} ${req.url} HTTP/1.1\r\n${lines.join('\r\n')}\r\n\r\n`);
+    if (head?.length) up.write(head);
+    socket.pipe(up).pipe(socket);
+  });
+  up.on('error', () => socket.destroy());
+  socket.on('error', () => up.destroy());
+});
 server.on('error', (e) => {
   // A port given by the preview pane (PORT) is the one it opens: don't move off it.
   const fixed = !opts.port && process.env.PORT;
@@ -548,7 +617,7 @@ server.on('listening', async () => {
   origin = `http://localhost:${PORT}`;
   saveServer();
   await persist();
-  console.log(`[lab] ${origin}  ·  pages from ${ROOT}`);
+  console.log(`[lab] ${origin}  ·  ${PROXY ? `pages from the dev server at ${PROXY.origin}, comments in` : 'pages from'} ${ROOT}`);
   console.log(WIFI ? `[lab] other devices on this wifi: http://${hostName}.local:${PORT} or ${wifiAddrs().map((a) => `http://${a}:${PORT}`).join(', ')}`
     : '[lab] only this computer can open it (--wifi lets phones on the same wifi in)');
   console.log(`[lab] Claude: run \`node ${ME} wait\` in the background from ${ROOT}; it ends with the next comment.`);
