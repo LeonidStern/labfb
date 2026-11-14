@@ -32,7 +32,7 @@ Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
 For Claude, from inside the folder:
   labfb wait [--timeout 1500]
       Run in the background. Ends with the next comment (and any not seen yet), printed in full.
-      The page then says it talks to this session. Ends too when no page has been open for 2 minutes.
+      The page then says it talks to this session. With the page closed it keeps waiting, and ends after an hour of no page.
   labfb reply <id> "what you did" [--resolve] [--page /path]
       Answer on the pin. Use the id that wait printed (the number on the card works too, but shifts after a delete). --resolve closes the thread.
   labfb resolve <id> [--page /path]
@@ -349,32 +349,34 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (_, file) => {
 // Comments people made that Claude hasn't been given yet, whole threads, as the agent text shows them.
 let seen = fs.existsSync(SEEN) ? fs.readFileSync(SEEN, 'utf8').trim() : '';
 let waiter = null;
-// When every page is closed for a while, the open wait ends, so closed pages don't keep a session listening.
-// Each tab has an id. A tab in the background drops its stream but still counts as open; it leaves when it says bye
-// on pagehide (closed, or navigated away), or after half an hour with no stream if it never could.
-// A reload says bye and reconnects within a second, well inside the grace.
-const CLOSE_GRACE = Number(process.env.LAB_CLOSE_GRACE || 120) * 1000;
+// With every page closed, Claude keeps waiting quietly (a comment after a break still wakes it), and the wait
+// ends after an hour of no page. Each tab has an id. A tab in the background drops its stream but still counts as
+// open; it leaves when it says bye on pagehide (closed, or navigated away), or after half an hour with no stream.
+// A reload says bye and reconnects within a second. Claude starting wait again right after a timed-out one keeps
+// the same hour; a wait asked for later (the person said "listen") starts a new one.
+const CLOSE_GRACE = Number(process.env.LAB_CLOSE_GRACE || 3600) * 1000;
 const tabs = new Map(); // id -> { streams, seen }
 const openTabs = () => {
   for (const [id, t] of tabs) if (!t.streams && Date.now() - t.seen > 1800000) tabs.delete(id);
   return tabs.size;
 };
+let closedSince = Date.now(); // null while a page is open
+let waitEnded = 0;
 let closedTimer = null;
 const pagesChanged = () => {
-  if (openTabs() || !waiter) {
-    clearTimeout(closedTimer);
-    closedTimer = null;
-    return;
-  }
-  closedTimer ??= setTimeout(() => {
-    closedTimer = null;
+  if (openTabs()) closedSince = null;
+  else closedSince ??= Date.now();
+  clearTimeout(closedTimer);
+  if (closedSince === null || !waiter) return;
+  closedTimer = setTimeout(() => {
     if (openTabs() || !waiter) return;
     const w = waiter;
     waiter = null;
+    waitEnded = Date.now();
     clearTimeout(w.timer);
     w.res.writeHead(410).end('the page was closed');
     setMode('away');
-  }, CLOSE_GRACE);
+  }, Math.max(0, closedSince + CLOSE_GRACE - Date.now()));
 };
 setInterval(pagesChanged, 60000).unref();
 // The agent text of some threads on a page: its page/file lines, then each thread in full.
@@ -413,6 +415,7 @@ async function wake() {
   if (!got?.text || !waiter) return;
   const w = waiter;
   waiter = null;
+  waitEnded = Date.now();
   clearTimeout(w.timer);
   deliver(w.res, got);
 }
@@ -576,17 +579,20 @@ const handler = async (req, res) => {
         timer: setTimeout(() => {
           if (waiter !== w) return;
           waiter = null;
+          waitEnded = Date.now();
           res.writeHead(204).end();
           setMode('away');
         }, Math.min(Number(timeout) || 1500, 7000) * 1000),
       };
+      if (!openTabs() && Date.now() - waitEnded > 120000) closedSince = Date.now(); // a new listen: a new hour
       waiter = w;
       setMode('listening');
-      pagesChanged(); // no page open yet: the grace starts now
+      pagesChanged();
       // Claude stopped listening (the wait was cancelled): the page says so.
       res.on('close', () => {
         if (waiter !== w) return;
         waiter = null;
+        waitEnded = Date.now();
         clearTimeout(w.timer);
         setMode('away');
       });
