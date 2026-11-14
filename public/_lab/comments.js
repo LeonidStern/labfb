@@ -106,8 +106,10 @@
       .zone { position: absolute; background: color-mix(in srgb, var(--_accent) 5%, transparent);
               border-radius: var(--_radius); pointer-events: none; }
       .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-      .zone rect { fill: none; stroke: color-mix(in srgb, var(--_accent) 60%, transparent); stroke-width: 2; stroke-linecap: round;
-                   stroke-dasharray: 0 9; rx: var(--_radius); ry: var(--_radius); }
+      .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 4; rx: var(--_radius); ry: var(--_radius); }
+      /* Light dots on a dark ring: the outline shows on black pages and white ones, whatever the system theme. */
+      .zone rect.ring { stroke: rgba(0,0,0,.5); stroke-width: 2.5; }
+      .zone rect.dots { stroke: #fff; stroke-width: 1; }
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
       .zone.saved { background: color-mix(in srgb, var(--_accent) 3%, transparent); }
       .zone.saved.in { animation: lab-settle .36s var(--_ease); }
@@ -140,11 +142,12 @@
       .card .box { background: var(--_soft); border-radius: max(calc(var(--_radius) - 2px), 0px); margin: 0; }
       .card .box.open { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent); }
       .card .box:focus-within { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 28%, transparent); }
-      .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 10px 8px 8px 14px; }
+      /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
+      .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
       .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 4px 0; margin: 0; resize: none;
                       min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; }
       .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
-      .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -8px 0 -14px; display: none; }
+      .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
       .who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; font-size: 13px; color: var(--_muted); letter-spacing: .005em; }
       .who * { font-size: 13px; }
       .who span { color: var(--_muted); }
@@ -173,9 +176,10 @@
              background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; text-decoration: none; white-space: nowrap; }
       .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
       .listener span { color: var(--_muted); }
+      .listener.idle::before { background: var(--_muted); opacity: .5; }
       kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: 4px; text-align: center;
             background: var(--_soft); color: var(--_muted) !important; }
-      .hint { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
+      .hint { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
               box-shadow: var(--_shadow); padding: 8px 14px; border-radius: 999px; font-size: 13px; pointer-events: none; white-space: nowrap;
               letter-spacing: .005em; animation: lab-fade .2s ease-out; }
       /* 16px fields keep iOS from zooming the page when one is focused. */
@@ -489,7 +493,7 @@
   // The area's outline: round dots with room between them (CSS dotted borders can't space their dots).
   const zoneEl = (cls) => {
     const z = el('div', { class: `zone ${cls}` });
-    z.innerHTML = '<svg aria-hidden="true"><rect width="100%" height="100%"/></svg>';
+    z.innerHTML = '<svg aria-hidden="true"><rect class="ring" width="100%" height="100%"/><rect class="dots" width="100%" height="100%"/></svg>';
     return z;
   };
   const drawZone = (box, cls) => {
@@ -592,7 +596,9 @@
     } catch {
       // Keep what is already on screen when a refresh fails.
     }
-    if (!typed() && !grabbing) render(); // someone is typing: the new comments show on the next render, the text stays
+    if (!typed() && !grabbing) render();
+    // Someone is in a box: the open thread gets its new replies in place; everything else shows on the next render.
+    else if (openCard?.isConnected) openCard.sync();
   }
 
   async function send(payload) {
@@ -684,11 +690,22 @@
     wrap.append(box, error);
 
     const sync = () => {
-      box.classList.toggle('open', text.value.length > 0 || root.activeElement === name || !!error.textContent);
+      const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
+      // Opening moves the arrow from the text row to the name row: slide it there while the box grows, no jump.
+      const glide = open !== box.classList.contains('open') && box.isConnected && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const from = glide && { arrow: sendBtn.getBoundingClientRect(), height: box.getBoundingClientRect().height };
+      box.classList.toggle('open', open);
       as.hidden = !name.value.trim();
       sendBtn.classList.toggle('ready', Boolean(text.value.trim() && name.value.trim()));
       text.style.height = 'auto';
       text.style.height = `${text.scrollHeight}px`;
+      if (glide) {
+        const to = sendBtn.getBoundingClientRect();
+        const timing = { duration: 220, easing: 'cubic-bezier(.2, .7, .3, 1)' };
+        sendBtn.animate([{ transform: `translate(${from.arrow.left - to.left}px, ${from.arrow.top - to.top}px)` }, { transform: 'none' }], timing);
+        box.style.overflow = 'hidden';
+        box.animate([{ height: `${from.height}px` }, { height: `${box.getBoundingClientRect().height}px` }], timing).onfinish = () => (box.style.overflow = '');
+      }
     };
     let busy = false;
     const go = async () => {
@@ -752,6 +769,7 @@
   let posted = null;
   const still = matchMedia('(prefers-reduced-motion: reduce)');
   function render() {
+    grabbing = false; // a pin being dragged is replaced: its drag ends here
     const prev = layer.querySelector('.card:not(.out), .float:not(.out)');
     layer.replaceChildren();
     const now = on ? draft || openId : null;
@@ -811,7 +829,9 @@
       layer.append(pin);
       if (openId === c.id) {
         // Area comments open below the area, so the card doesn't hide what it is about.
-        const card = threadCard(c, new Set(news.map((x) => x.id)));
+        // Opened by a click: the reply box takes focus (not on touch screens, where it would pop the keyboard).
+        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && !coarse);
+        openCard = card;
         if (appear) card.classList.add('in');
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
         markSeen(news);
@@ -859,21 +879,32 @@
       if (e.button !== 0) return;
       const r = pin.getBoundingClientRect();
       const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
-      const start = { x: e.clientX, y: e.clientY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
+      const start = { x: e.clientX, y: e.clientY, sx: scrollX, sy: scrollY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
       let moving = false;
+      let last = e;
       grabbing = true;
       pin.setPointerCapture(e.pointerId);
+      // Page coordinates, so the pin stays under the pointer when the page scrolls mid-drag.
+      const place = () => {
+        pin.style.left = `${start.left + last.clientX - start.x + scrollX - start.sx}px`;
+        pin.style.top = `${start.top + last.clientY - start.y + scrollY - start.sy}px`;
+      };
       const move = (ev) => {
+        last = ev;
         if (!moving && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
         moving = true;
         pin.classList.add('dragging');
-        pin.style.left = `${start.left + ev.clientX - start.x}px`;
-        pin.style.top = `${start.top + ev.clientY - start.y}px`;
+        place();
       };
+      const scrolled = () => moving && place();
+      addEventListener('scroll', scrolled, true);
       const up = async (ev) => {
         pin.removeEventListener('pointermove', move);
         pin.removeEventListener('pointerup', up);
         pin.removeEventListener('pointercancel', up);
+        pin.removeEventListener('lostpointercapture', up);
+        removeEventListener('scroll', scrolled, true);
+        if (!grabbing) return; // already ended (the layer was redrawn mid-drag)
         grabbing = false;
         if (!moving) return;
         pin.dataset.dragged = '1'; // the click that follows is the drop, not an open
@@ -896,23 +927,40 @@
       pin.addEventListener('pointermove', move);
       pin.addEventListener('pointerup', up);
       pin.addEventListener('pointercancel', up);
+      pin.addEventListener('lostpointercapture', up);
     });
   }
 
-  function threadCard(c, fresh = new Set()) {
+  // The open thread's card. New replies (Claude's too) are added to it in place, so the reply box keeps focus.
+  let openCard = null;
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  function threadCard(c, fresh = new Set(), focus = false) {
     const card = el('div', { class: 'card' });
     card.addEventListener('click', (e) => e.stopPropagation());
-    const itemEl = (item) => {
+    const itemEl = (item, isNew = fresh.has(item.id)) => {
       const box = el('div', { class: 'item' });
       const meta = el('div', { class: 'meta' });
       meta.append(el('b', {}, item.name), el('span', { class: 'ago', title: when(item.createdAt) }, ago(item.createdAt)));
-      if (fresh.has(item.id)) meta.append(el('span', { class: 'dot', title: 'new' }));
+      if (isNew) meta.append(el('span', { class: 'dot', title: 'new' }));
       // The number the agent text uses for this thread.
       if (item === c && !c.resolved) meta.append(el('span', { class: 'num', title: 'comment number, as in the agent link' }, String(numberOf(c))));
       box.append(meta, el('div', { class: 'text' }, item.text));
       return box;
     };
-    for (const item of [c, ...repliesOf(c.id)]) card.append(itemEl(item));
+    const shown = new Set();
+    for (const item of [c, ...repliesOf(c.id)]) {
+      card.append(itemEl(item));
+      shown.add(item.id);
+    }
+    card.sync = () => {
+      for (const r of repliesOf(c.id)) {
+        if (shown.has(r.id)) continue;
+        const items = card.querySelectorAll('.item');
+        items[items.length - 1].after(itemEl(r, true));
+        shown.add(r.id);
+        markSeen([r]);
+      }
+    };
     if (isAdmin) {
       const actions = el('div', { class: 'row' });
       const resolve = el('button', { class: 'btn', type: 'button' }, c.resolved ? 'reopen' : 'resolve');
@@ -944,13 +992,16 @@
     card.append(
       composer({
         placeholder: 'reply',
+        autofocus: focus,
         onSubmit: async (name, text) => {
           const { comment } = await send({ name, text, parent: c.id });
           comments.push(comment);
           markSeen([comment]);
           // Add the reply where it belongs instead of redrawing the card, so nothing on screen blinks
           // and the reply box keeps its focus for the next one.
-          card.querySelectorAll('.item')[repliesOf(c.id).length - 1].after(itemEl(comment));
+          shown.add(comment.id);
+          const items = card.querySelectorAll('.item');
+          items[items.length - 1].after(itemEl(comment, false));
           return { keep: true };
         },
       }),
@@ -1185,7 +1236,8 @@
         addEventListener('load', () => scrollTo(0, +(kept.y ?? kept)));
       }
     } catch {}
-    const busy = () => draft || root.activeElement;
+    // Hold a reload while a comment is being started or text is typed; a focused, empty reply box doesn't count.
+    const busy = () => draft || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
     const reload = () => {
       if (busy()) return setTimeout(reload, 500);
       try {
@@ -1205,16 +1257,21 @@
       stream.onmessage = (e) => {
         const v = JSON.parse(e.data);
         if (String(v.files) !== script.dataset.version) return reload();
-        if (seen !== null && v.comments !== seen) {
-          if (busy()) return;
-          load();
-        }
+        if (seen !== null && v.comments !== seen) load(); // load() keeps typed text: it adds replies in place
         seen = v.comments;
+        // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;
-        who.replaceChildren(Object.assign(document.createElement('span'), { textContent: 'talking to' }), s ? s.name : 'no Claude session');
-        if (s?.url) Object.assign(who, { href: s.url, target: '_blank' });
+        const mode = s ? v.mode || 'listening' : 'away';
+        const span = (t) => Object.assign(document.createElement('span'), { textContent: t });
+        // "Claude is working (ooze)": Claude first, the session's name after it in brackets.
+        const tag = s && s.name !== 'Claude' ? [span(`(${s.name})`)] : [];
+        if (mode === 'listening') who.replaceChildren(span('talking to'), 'Claude', ...tag);
+        else if (mode === 'working') who.replaceChildren('Claude', span('is working'), ...tag);
+        else who.replaceChildren(span('no Claude listening'));
+        who.classList.toggle('idle', mode === 'away');
+        if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
         else who.removeAttribute('href');
-        who.title = s?.resume || (s ? '' : 'Claude: node local.mjs wait');
+        who.title = mode === 'away' ? 'Ask Claude to run: node local.mjs wait' : s?.resume || '';
         who.hidden = false;
       };
     };
