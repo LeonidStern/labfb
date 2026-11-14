@@ -1,0 +1,9 @@
+{
+  "name": "labfb",
+  "version": "0.4.0",
+  "description": "Read and answer labfb pin comments: cloud lab links and local mode (wait, fix, reply on the pin).",
+  "author": { "name": "leonidstern", "url": "https://github.com/LeonidStern" },
+  "homepage": "https://github.com/LeonidStern/labfb",
+  "repository": "https://github.com/LeonidStern/labfb",
+  "license": "MIT"
+}

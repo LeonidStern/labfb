@@ -1,19 +1,28 @@
 # labfb
 
-Pin comments on live pages. Anyone with the link clicks anywhere and types a name, no account. Then press "copy link" and paste it into your agent. That's it: it reads every comment and goes to the file.
+[![npm](https://img.shields.io/npm/v/@leonidstern/labfb)](https://www.npmjs.com/package/@leonidstern/labfb) [![test](https://github.com/LeonidStern/labfb/actions/workflows/test.yml/badge.svg)](https://github.com/LeonidStern/labfb/actions/workflows/test.yml) [![MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
+
+Pin comments on pages, and your agent reads them as plain text. Use it on a live domain where anyone with the link can comment, or on your own computer, where Claude answers on the pins while it works.
 
 ![Comments pinned on a demo page](docs/comments.png)
 
-Works on text, code, photos and video files. Each comment records what's under it: the image file and the spot in its pixels, the quoted words, the video time, the section. So an agent finds it in the source without a screenshot.
+## Features
 
-![A person pins, the agent GETs one link as plain text, then opens the exact file, line, pixel or second](docs/how-agents-see-comments.png)
+**Cloud lab**: pages on a domain, for people you share links with
+- **No account:** anyone with the link clicks anywhere, types a name and comments.
+- **One link for your agent:** "copy link" gives plain text with every open comment. Paste it into any agent and it goes to the file.
+- **Knows what's under the pin:** the quoted words, the element, the image file and pixel, the code line, the video second. No screenshots needed.
+- **One domain, many repos:** the lab domain only proxies `/<name>/*` to each member's own repo and Vercel project.
+- **Admin links per person:** let someone resolve and delete on their pages only. Nothing to set up per person.
 
-One domain, many repos. The lab domain is only a proxy: two rewrite lines send `/<name>/*` to each member's own repo and Vercel project, with their own pages, notes and knowledge base for their agent. Nobody shares a codebase, nobody waits on anybody.
+**Local lab**: pages on your computer, for you and Claude
+- **No deploy:** `npx @leonidstern/labfb <folder>` puts comments on plain HTML files, or on a running Astro, Next or Vite dev server.
+- **Claude answers on the pin:** it hears each comment as you post it, edits the file, the page reloads, and the reply shows on the pin.
+- **Shows who is listening:** the label says whether Claude is listening or working.
+- **Quick model first (optional):** small, clear changes are done by a fast model in a few seconds.
+- **Phone too:** `--wifi` lets a phone at home join. Comments stay in `<folder>/.lab`, one store per project.
 
-Two ways to use it:
-
-- **Cloud lab:** pages live on a domain, anyone with the link comments, your agent reads them by link.
-- **Local lab:** pages on your computer, you comment and Claude answers on the pin while it works. No deploy.
+Both: works on text, code, photos and video, drag your pins, hold Option to comment on links and buttons, 19 KB gzipped, and a [Claude skill](skills/labfb/SKILL.md) that knows both flows.
 
 ## Cloud lab
 
@@ -46,27 +55,38 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
 
 ## Local lab
 
-Paste this into Claude Code. It needs Node 20 or newer, nothing to install.
-
-```text
-Set up labfb local mode for me.
-
-1. Clone https://github.com/leonidstern/labfb next to my projects.
-2. Copy its skill/SKILL.md to ~/.claude/skills/labfb/SKILL.md, so you know the loop in every session.
-3. Start it on <my folder>: node <labfb>/local.mjs <my folder>
-   (or add --proxy <port> if a dev server is already running there).
-4. Listen for my comments and answer them on the pins, as the skill says.
+```sh
+npx @leonidstern/labfb ./my-site            # plain HTML files
+npx @leonidstern/labfb . --proxy 4321       # or a running dev server
 ```
 
-- **Comment:** press `c` (or hold Option) and click. Claude edits the file, the page reloads, and the answer shows on the pin. The label at the bottom says whether Claude is listening or working.
-- **Options:** `--proxy 4321` puts comments on a running Astro, Next or Vite dev server. `--fast` lets a quick model make small changes first. `--wifi` lets a phone at home join. `node local.mjs preview <folder>` opens it in the Claude desktop app's preview pane. `node local.mjs --help` lists the rest.
-- **Files:** comments stay in `<folder>/.lab`, one per project. Delete it to start over.
+Then tell Claude Code to listen. The skill teaches it the loop (wait for a comment, fix it, reply on the pin, wait again). Install it once:
+
+```text
+/plugin marketplace add leonidstern/labfb
+/plugin install labfb@leonidstern
+```
+
+Or paste this into Claude Code:
+
+```text
+Start labfb on <my folder> with `npx @leonidstern/labfb <my folder>` (add --proxy <port> if a dev server already runs there).
+Then run `npx @leonidstern/labfb wait --name "<project>"` in the background, fix what each comment asks, answer on the pin
+with `npx @leonidstern/labfb reply <id> "Done: …"`, and wait again. `npx @leonidstern/labfb --help` has the rest.
+```
+
+- **Comment:** press `c` (or hold Option) and click. Drag to mark an area.
+- **Options:** `--proxy <port>` for a dev server, `--fast` for the quick model, `--wifi` for a phone at home. `npx @leonidstern/labfb preview <folder>` opens it in the Claude desktop app's preview pane.
+- **Files:** comments stay in `<folder>/.lab`. Delete it to start over. Add `.lab/` to `.gitignore`.
 
 ## Both
 
+![A person pins, the agent GETs one link as plain text, then opens the exact file, line, pixel or second](docs/how-agents-see-comments.png)
+
 - **Page hints:** `data-uncommentable` keeps comments off a part of the page; `data-comment-target` pins any click inside to that element. Same names as Claude artifact comments.
-- **Skill:** [skill/SKILL.md](skill/SKILL.md) tells Claude how to read a cloud link and how to run the local loop.
 - **Theme:** set `--lab-accent`, `--lab-bg`, `--lab-fg`, `--lab-radius` or `--lab-font` on `[data-lab-comments]`.
+
+Development: `npm test` runs the local-mode checks (Node 20+, no packages). Changes are in [CHANGELOG.md](CHANGELOG.md).
 
 Tested with Claude: on a page with a photo, code and a video, Fable, Sonnet and Haiku found every spot from the link alone (file, pixel, line, second), see [bench](bench/). Admin links and deleting are tested across three labs in [bench/labs](bench/labs/). The script is 19 KB gzipped and loads after the page. Links are hidden, not locked, so don't put anything confidential there.
 
