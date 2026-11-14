@@ -69,7 +69,7 @@ Start labfb (https://github.com/leonidstern/labfb) on this project and listen to
 4. Run wait again right away. Stop when wait says the page was closed.
 ```
 
-Using it often? Install the plugin once, then just say **"start labfb"** in any project:
+Using it often? Install the plugin once, then just say **"start labfb"** in any project. With the plugin, **"use lab"** also makes Claude show new pages in labfb instead of an Artifact:
 
 ```text
 /plugin marketplace add leonidstern/labfb
