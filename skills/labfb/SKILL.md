@@ -39,7 +39,7 @@ When the person says "use lab", "in lab" or "show it in lab", show the page in l
 1. Write the page as an `.html` file. Put it in the project you're working in, next to its pages. With no project, use a `lab-pages/` folder in the working directory. One file per page, with a clear name (`pricing.html`), and a `<title>`.
 2. Run `LAB --no-open` in the background from that folder (or `LAB <folder> --no-open`) and read the port it prints. If a lab already runs there, it says so and prints its port.
 3. Show the page beside the chat, the way an Artifact shows. In the Claude desktop app, open `http://localhost:<port>/<file name>` in its built-in browser pane (the Claude_Browser tools: `preview_start` with the `url`, or `navigate` when a tab is open) and bring that pane to the front. Anywhere else, run `LAB` without `--no-open` so it opens the person's browser. Pins work in both.
-4. Give the person the page's URL in one line, then listen and answer as in Local lab, steps 2 to 4.
+4. Give the person the page's URL in one line, then send the page list and listen and answer as in Local lab, steps 2 to 5.
 5. For later changes, edit the file. The page reloads by itself, so there's nothing to republish.
 
 Start local, always. The page stays on this computer (for a phone at home, add `--wifi`). Put it on their cloud lab only when the person asks to upload or share it: then follow Cloud lab, reusing their lab and project. Make an Artifact only if they ask for one.
