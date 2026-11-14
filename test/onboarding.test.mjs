@@ -42,7 +42,7 @@ test('in a project, a bare run finds the dev server running in that folder', { s
   const dev = spawn(process.execPath, ['-e', `require('http').createServer((q,s)=>{s.setHeader('content-type','text/html');s.end('<h1>dev page</h1>')}).listen(${devPort},'127.0.0.1')`], { cwd: DIR });
   kids.push(dev);
   await new Promise((r) => setTimeout(r, 400));
-  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', labPort], { cwd: DIR });
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--no-fast', '--port', labPort], { cwd: DIR });
   kids.push(lab);
   let out = '';
   lab.stdout.on('data', (d) => (out += d));

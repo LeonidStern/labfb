@@ -19,7 +19,7 @@ Pin comments on pages, and your agent reads them as plain text. Use it on a live
 - **No deploy:** run `npx @leonidstern/labfb` in your project. It finds your running Astro, Next or Vite dev server and puts comments on top, or serves plain HTML files.
 - **Claude answers on the pin:** it hears each comment as you post it, edits the file, the page reloads, and the reply shows on the pin.
 - **Shows who is listening:** the label says whether Claude is listening or working. Close the page and Claude waits quietly: your first comment when you're back wakes it, and it stops after an hour.
-- **Quick model first (optional):** small, clear changes are done by a fast model in a few seconds.
+- **Quick model first:** when Claude Code is installed, small, clear changes are done by a fast model in a few seconds. `--no-fast` turns it off.
 - **Phone too:** `--wifi` lets a phone at home join. Comments stay in `.lab/`, one store per project.
 
 Both: works on text, code, photos and video, drag your pins, hold Option to comment on links and buttons, 19 KB gzipped, and a [Claude skill](skills/labfb/SKILL.md) that knows both flows.
@@ -81,7 +81,7 @@ Without Claude, run `npx @leonidstern/labfb` in your project:
 - **Plain HTML files:** served as they are. Pages somewhere else: `npx @leonidstern/labfb dist`.
 
 - **Comment:** press `c` (or hold Option) and click. Drag to mark an area.
-- **Options:** `--fast` for the quick model, `--wifi` for a phone at home. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
+- **Options:** `--no-fast` turns off the quick model, `--wifi` lets a phone at home join. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
 - **Files:** comments stay in `.lab/` in the project. Delete it to start over. Add `.lab/` to `.gitignore`.
 
 ## Both
