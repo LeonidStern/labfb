@@ -4,6 +4,10 @@
 //   node local.mjs [folder] [--port 4400]      serve the folder at http://localhost:4400 with comments on every page
 //   node local.mjs reply <id> "text"           answer a comment on the page, as Claude (LAB_AGENT_NAME to change)
 //   node local.mjs resolve <id>                resolve a comment
+//   node local.mjs claim                       this Claude session takes over the folder (the page says who it talks to)
+//
+// Session: the server, replies and claims record which Claude session they come from. Inside Claude Code that is
+// read from CLAUDE_CODE_SESSION_ID (and the claude.ai link for cloud sessions); --name or LAB_SESSION_NAME names it.
 //
 // Comments are kept in <folder>/.lab/comments.json and written out as plain text to <folder>/.lab/comments.md
 // after every change, so an agent reads them as a file. Every new comment or reply is also printed as one line
@@ -13,6 +17,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { randomBytes } from 'node:crypto';
 
 const REPO = path.dirname(new URL(import.meta.url).pathname);
@@ -21,12 +26,41 @@ const flag = (name, fallback) => {
   const i = args.indexOf(name);
   return i === -1 ? fallback : args.splice(i, 2)[1];
 };
+const portFlag = flag('--port');
+const dirFlag = flag('--dir');
+const nameFlag = flag('--name');
+
+// The Claude session running this command, if any.
+function mySession() {
+  const id = process.env.CLAUDE_CODE_SESSION_ID || '';
+  const remote = process.env.CLAUDE_CODE_REMOTE_SESSION_ID || '';
+  const name = nameFlag || process.env.LAB_SESSION_NAME || (id ? `session ${id.slice(0, 8)}` : '');
+  if (!name) return null;
+  return {
+    id,
+    name: name.slice(0, 40),
+    url: remote ? `https://claude.ai/code/${remote.replace(/^cse_/, 'session_')}` : '',
+    resume: id && !remote ? `claude --resume ${id}` : '',
+    since: new Date().toISOString(),
+  };
+}
 
 // ---------- CLI: reply / resolve, through the running server so open pages update ----------
-if (args[0] === 'reply' || args[0] === 'resolve') {
+if (args[0] === 'reply' || args[0] === 'resolve' || args[0] === 'claim') {
   const [action, id, ...rest] = args;
-  const dir = path.resolve(flag('--dir', process.env.LAB_DIR || '.'));
+  const dir = path.resolve(dirFlag || process.env.LAB_DIR || '.');
   const server = JSON.parse(fs.readFileSync(path.join(dir, '.lab/server.json'), 'utf8'));
+  const session = mySession();
+  const headers = { 'content-type': 'application/json', 'x-lab-admin': server.token, 'x-lab-agent': '1', ...(session ? { 'x-lab-session': encodeURIComponent(JSON.stringify(session)) } : {}) };
+  if (action === 'claim') {
+    if (!session) {
+      console.error('no session to claim with: run this from Claude Code, or pass --name');
+      process.exit(1);
+    }
+    const res = await fetch(`http://localhost:${server.port}/_lab/session`, { method: 'POST', headers });
+    console.log(res.ok ? `the page now talks to ${session.name}. To hear new comments as they come: tail -n 0 -f ${path.join(dir, '.lab/inbox.jsonl')}` : await res.text());
+    process.exit(res.ok ? 0 : 1);
+  }
   const data = JSON.parse(fs.readFileSync(path.join(dir, '.lab/comments.json'), 'utf8'));
   const page = Object.keys(data).find((p) => data[p][id]);
   if (!page) {
@@ -34,11 +68,11 @@ if (args[0] === 'reply' || args[0] === 'resolve') {
     process.exit(1);
   }
   const body = action === 'reply'
-    ? { page, parent: id, name: process.env.LAB_AGENT_NAME || 'Claude', text: rest.join(' ') }
+    ? { page, parent: id, name: (process.env.LAB_AGENT_NAME || 'Claude') + (session ? ` · ${session.name}` : ''), text: rest.join(' ') }
     : { page, action: 'resolve', id };
   const res = await fetch(`http://localhost:${server.port}/_lab/api/comments`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-lab-admin': server.token, 'x-lab-agent': '1' },
+    headers,
     body: JSON.stringify(body),
   });
   console.log(res.ok ? `${action === 'reply' ? 'replied' : 'resolved'} on ${page}` : await res.text());
@@ -47,7 +81,8 @@ if (args[0] === 'reply' || args[0] === 'resolve') {
 
 // ---------- server ----------
 const ROOT = path.resolve(args[0] || '.');
-const PORT = Number(flag('--port', process.env.PORT || 4400));
+const PORT = Number(portFlag || process.env.PORT || 4400);
+let session = mySession();
 const LAB = path.join(ROOT, '.lab');
 fs.mkdirSync(LAB, { recursive: true });
 const DATA = path.join(LAB, 'comments.json');
@@ -97,7 +132,8 @@ async function persist() {
   for (const page of pages()) out[page] = Object.fromEntries([...db.get(`lab:comments:${page}`)].map(([id, v]) => [id, JSON.parse(v)]));
   fs.writeFileSync(DATA, JSON.stringify(out, null, 2));
   const texts = await Promise.all(pages().map(agentText));
-  const head = `<!-- labfb local: comments on pages in ${ROOT}. Reply: node ${path.join(REPO, 'local.mjs')} reply <id> "text" (run in ${ROOT}) -->\n\n`;
+  const who = session ? `talking to: ${session.name}${session.id ? ` (session ${session.id})` : ''}${session.url ? ` ${session.url}` : ''}` : 'talking to: no session';
+  const head = `<!-- labfb local: comments on pages in ${ROOT}. ${who}. Reply: node ${path.join(REPO, 'local.mjs')} reply <id> "text" (run in ${ROOT}) -->\n\n`;
   fs.writeFileSync(path.join(LAB, 'comments.md'), head + (texts.join('\n') || 'No comments yet.\n'));
 }
 await persist();
@@ -127,13 +163,22 @@ function announce(page, comment, fromAgent) {
   fs.appendFileSync(path.join(LAB, 'inbox.jsonl'), JSON.stringify({ page, n, ...comment }) + '\n');
 }
 
-const inject = `
-<script>try{localStorage.setItem('lab-admin',${JSON.stringify(TOKEN)});if(localStorage.getItem('lab-on')===null)localStorage.setItem('lab-on','1')}catch{}</script>
+// Only this computer gets the admin key (resolve, delete). Phones and laptops on the same wifi comment as guests.
+const isLocal = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+const inject = (local) => `
+<script>try{${local ? `localStorage.setItem('lab-admin',${JSON.stringify(TOKEN)});` : ''}if(localStorage.getItem('lab-on')===null)localStorage.setItem('lab-on','1')}catch{}</script>
 <script src="/_lab/comments.js" data-enable="always" defer></script>
 <script>(()=>{const k='lab-scroll:'+location.pathname;try{const y=sessionStorage.getItem(k);if(y!==null){sessionStorage.removeItem(k);addEventListener('load',()=>scrollTo(0,+y))}}catch{}
 const busy=()=>document.querySelector('[data-lab-comments]')?.shadowRoot?.activeElement;
 const reload=()=>{if(busy())return setTimeout(reload,500);try{sessionStorage.setItem(k,scrollY)}catch{}location.reload()};
-const es=new EventSource('/_lab/live');es.onmessage=(e)=>e.data==='reload'?reload():dispatchEvent(new Event('lab:refresh'))})()</script>
+const tag=document.createElement('a');tag.setAttribute('data-lab-session','');
+tag.style.cssText='position:fixed;left:16px;bottom:16px;z-index:2147483646;display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;background:#fff;color:#141414;font:13px/1.2 "lab comments",system-ui,sans-serif;text-decoration:none;box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 6px 20px rgba(0,0,0,.08)';
+const who=async()=>{try{const{session:s}=await(await fetch('/_lab/session',{cache:'no-store'})).json();
+tag.innerHTML='<span style="width:7px;height:7px;border-radius:50%;background:'+(s?'#141414':'#c4c4c4')+'"></span><span style="opacity:.55">talking to</span>';
+const b=document.createElement('span');b.textContent=s?s.name:'no session';tag.append(b);
+if(s&&s.url){tag.href=s.url;tag.target='_blank'}else tag.removeAttribute('href');tag.title=s?(s.url||s.resume||''):'run: node local.mjs claim';
+if(!tag.isConnected)document.body.append(tag)}catch{}};who();
+const es=new EventSource('/_lab/live');es.onmessage=(e)=>e.data==='reload'?reload():e.data==='session'?who():dispatchEvent(new Event('lab:refresh'))})()</script>
 `;
 
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.avif': 'image/avif', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2', '.ts': 'text/plain; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8' };
@@ -147,6 +192,19 @@ http.createServer(async (req, res) => {
       clients.add(res);
       req.on('close', () => clients.delete(res));
       return;
+    }
+    if (url.pathname === '/_lab/session') {
+      if (req.method === 'POST') {
+        const next = sessionFrom(req);
+        if (!next || req.headers['x-lab-admin'] !== TOKEN) return res.writeHead(400).end('no session');
+        console.log(`[lab] ${next.name} took over this folder${session ? ` from ${session.name}` : ''}; comments now go to it`);
+        session = next;
+        saveServer();
+        await persist();
+        broadcast('session');
+      }
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      return res.end(JSON.stringify({ session: session && { name: session.name, url: session.url, resume: session.resume, since: session.since } }));
     }
     if (url.pathname === '/_lab/api/comments' || url.pathname.startsWith('/_lab/agent/')) {
       const chunks = [];
@@ -165,7 +223,7 @@ http.createServer(async (req, res) => {
         page = parsed.page = pageKey(parsed.page || '/');
         body = JSON.stringify(parsed);
       }
-      const headers = new Headers({ host: 'localhost', 'content-type': 'application/json', 'x-forwarded-for': '127.0.0.1' });
+      const headers = new Headers({ host: 'localhost', 'content-type': 'application/json', 'x-forwarded-for': req.socket.remoteAddress || 'unknown' });
       if (req.headers['x-lab-admin']) headers.set('x-lab-admin', req.headers['x-lab-admin']);
       const out = await api[req.method]?.(new Request(`${origin}/api${url.search}`, { method: req.method, headers, body: req.method === 'GET' ? undefined : body }));
       if (!out) return res.writeHead(405).end();
@@ -174,6 +232,12 @@ http.createServer(async (req, res) => {
         await persist();
         broadcast('comments');
         const { comment } = JSON.parse(text);
+        const from = req.headers['x-lab-agent'] === '1' && sessionFrom(req);
+        if (out.status === 201 && from) { // remember which Claude session wrote it
+          const h = db.get(`lab:comments:${page}`);
+          h.set(comment.id, JSON.stringify({ ...JSON.parse(h.get(comment.id)), session: from }));
+          await persist();
+        }
         if (out.status === 201) announce(page, comment, req.headers['x-lab-agent'] === '1');
       }
       res.writeHead(out.status, { 'content-type': out.headers.get('content-type') || 'application/json' });
@@ -200,7 +264,8 @@ http.createServer(async (req, res) => {
         fs.writeFileSync(FILES, JSON.stringify(files, null, 2));
       }
       let html = fs.readFileSync(file, 'utf8');
-      html = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, `${inject}</body>`) : html + inject;
+      const tail = inject(isLocal(req));
+      html = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, `${tail}</body>`) : html + tail;
       res.writeHead(200, { 'content-type': type, 'cache-control': 'no-store' });
       return res.end(html);
     }
@@ -219,9 +284,26 @@ http.createServer(async (req, res) => {
     res.writeHead(500).end(String(e));
   }
 }).listen(PORT, () => {
-  fs.writeFileSync(path.join(LAB, 'server.json'), JSON.stringify({ port: PORT, token: TOKEN }));
-  console.log(`[lab] ${origin}  (pages from ${ROOT}; comments in .lab/comments.md)`);
+  saveServer();
+  console.log(`[lab] ${origin}  (pages from ${ROOT}; comments in .lab/comments.md${session ? `; talking to ${session.name}` : ''})`);
+  const wifi = Object.values(os.networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal).map((a) => `http://${a.address}:${PORT}`);
+  const host = os.hostname().replace(/\.local$/, '');
+  if (wifi.length) console.log(`[lab] other devices on this wifi: http://${host}.local:${PORT} or ${wifi.join(', ')}`);
 });
+
+function saveServer() {
+  fs.writeFileSync(path.join(LAB, 'server.json'), JSON.stringify({ port: PORT, token: TOKEN, session }, null, 2));
+}
+
+function sessionFrom(req) {
+  try {
+    const s = JSON.parse(decodeURIComponent(req.headers['x-lab-session'] || ''));
+    const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
+    return s?.name ? { id: str(s.id, 80), name: str(s.name, 40), url: /^https:\/\/claude\.ai\//.test(s.url) ? str(s.url, 200) : '', resume: str(s.resume, 120), since: new Date().toISOString() } : null;
+  } catch {
+    return null;
+  }
+}
 
 function listing(res, dir, urlPath) {
   const items = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => !d.name.startsWith('.') && (d.isDirectory() || /\.html?$/.test(d.name)));
