@@ -17,7 +17,8 @@
   window.__labComments = true;
 
   const API = script?.dataset.api || '/_lab/api/comments';
-  const page = location.pathname.replace(/\/+$/, '') || '/';
+  const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
+  let page = pageNow();
   const store = {
     get: (k) => {
       try {
@@ -36,20 +37,22 @@
   // Admin keys are kept per lab (name.scope.sig), so one browser can hold links for /anna and /mira at once.
   // The owner token has no scope and works everywhere.
   const scopeOf = (key) => (key.split('.').length === 3 ? key.split('.')[1] : '');
-  const adminParam = new URLSearchParams(location.search).get('lab-admin');
+  // Admin links carry the key after # (never sent to the server, so it stays out of the member site's logs); ?lab-admin= still works.
+  const adminParam = new URLSearchParams(location.hash.slice(1)).get('lab-admin') || new URLSearchParams(location.search).get('lab-admin');
   if (adminParam) {
     const scope = scopeOf(adminParam);
     store.set(scope ? `lab-admin:${scope}` : 'lab-admin', adminParam);
     const url = new URL(location.href);
     url.searchParams.delete('lab-admin');
+    if (/lab-admin=/.test(url.hash)) url.hash = '';
     history.replaceState(null, '', url);
   }
-  const adminToken = store.get(`lab-admin:${page.split('/')[1] || ''}`) || store.get('lab-admin:*') || store.get('lab-admin');
+  const adminToken = script?.dataset.admin || store.get(`lab-admin:${page.split('/')[1] || ''}`) || store.get('lab-admin:*') || store.get('lab-admin');
 
   let comments = [];
   let isAdmin = false;
   // Off by default: the page looks clean until someone turns comments on (button or c); remembered per browser.
-  let on = store.get('lab-on') === '1';
+  let on = store.get('lab-on') ? store.get('lab-on') === '1' : script?.dataset.on === '1';
   let openId = null;
   let draft = null; // { anchor, docX, docY }
 
@@ -164,6 +167,10 @@
       .bar button * { color: inherit; font-weight: inherit; }
       .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
       .bar button.secondary { color: var(--_muted); }
+      .listener { position: fixed; left: 16px; bottom: 16px; display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: 999px;
+             background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; text-decoration: none; white-space: nowrap; }
+      .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
+      .listener span { color: var(--_muted); }
       kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: 4px; text-align: center;
             background: var(--_soft); color: var(--_muted) !important; }
       .hint { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
@@ -346,6 +353,8 @@
       dpr: Math.round((devicePixelRatio || 1) * 100) / 100,
       element: openingTag(target),
     };
+    const own = short(target.textContent, 200);
+    if (own && target !== document.body && (target.textContent || '').length < 400) anchor.text = short(own, 80);
     const inside = target.parentElement?.closest('[id], [data-lab]');
     if (inside) anchor.inside = inside.dataset.lab ? `[data-lab="${inside.dataset.lab}"]` : `#${inside.id}`;
     let heading = null;
@@ -416,6 +425,7 @@
         const m = n.closest?.('img, video') || n;
         return fileHint(mediaSrc(m)) === anchor.file;
       }
+      if (anchor.element && openingTag(n) !== anchor.element) return false;
       if (anchor.quote?.exact) return (n.textContent || '').includes(anchor.quote.exact);
       return true;
     };
@@ -553,10 +563,17 @@
   // lab host from the deployment's own address, so the first answer decides: no API here, no layer.
   let gone = false;
   let loaded = false;
+  let retried = false;
+  const typed = () => Boolean(root.activeElement) || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
   async function load() {
     try {
       const res = await fetch(`${API}?page=${encodeURIComponent(page)}`, { headers: headers(), cache: 'no-store' });
       if (res.status === 404 && !loaded && script?.dataset.enable !== 'always') {
+        if (!retried) {
+          retried = true;
+          setTimeout(load, 1500);
+          return;
+        }
         gone = true;
         on = false;
         document.documentElement.classList.remove('lab-pinning');
@@ -572,7 +589,7 @@
     } catch {
       // Keep what is already on screen when a refresh fails.
     }
-    render();
+    if (!typed()) render(); // someone is typing: the new comments show on the next render, the text stays
   }
 
   async function send(payload) {
@@ -614,13 +631,14 @@
       .indexOf(c) + 1;
 
   // Unread: comments and replies by someone else that this browser hasn't opened yet (kept per page).
-  const seenKey = `lab-seen:${page}`;
-  const seen = new Set(store.get(seenKey).split(',').filter(Boolean));
+  const seenKey = () => `lab-seen:${page}`;
+  const readSeen = () => new Set(store.get(seenKey()).split(',').filter(Boolean));
+  let seen = readSeen();
   const isNew = (c) => !seen.has(c.id) && c.name !== store.get('lab-name');
   const unread = (c) => [c, ...repliesOf(c.id)].filter(isNew);
   const markSeen = (items) => {
     for (const item of items) seen.add(item.id);
-    store.set(seenKey, [...seen].join(','));
+    store.set(seenKey(), [...seen].join(','));
   };
   const repliesOf = (id) => comments.filter((c) => c.parent === id);
   // Pins show who left them: the first letter of the name.
@@ -843,16 +861,24 @@
     if (isAdmin) {
       const actions = el('div', { class: 'row' });
       const resolve = el('button', { class: 'btn', type: 'button' }, c.resolved ? 'reopen' : 'resolve');
+      const failed = (btn) => (btn.textContent = 'failed, try again');
       resolve.addEventListener('click', async () => {
-        const { comment } = await send({ action: c.resolved ? 'reopen' : 'resolve', id: c.id });
-        Object.assign(c, comment);
-        render();
+        try {
+          const { comment } = await send({ action: c.resolved ? 'reopen' : 'resolve', id: c.id });
+          Object.assign(c, comment);
+          render();
+        } catch {
+          failed(resolve);
+        }
       });
       const del = el('button', { class: 'btn', type: 'button' }, 'delete');
       del.addEventListener('click', async () => {
         if (!confirm('delete this comment and its replies?')) return;
-        for (const r of repliesOf(c.id)) await send({ action: 'delete', id: r.id });
-        await send({ action: 'delete', id: c.id });
+        try {
+          await send({ action: 'delete', id: c.id }); // the API deletes the replies with it
+        } catch {
+          return failed(del);
+        }
         comments = comments.filter((x) => x.id !== c.id && x.parent !== c.id);
         openId = null;
         render();
@@ -886,7 +912,7 @@
   };
   const setOn = (value) => {
     on = value;
-    store.set('lab-on', on ? '1' : '');
+    store.set('lab-on', on ? '1' : '0');
     if (on) showHint();
     draft = null;
     openId = null;
@@ -898,7 +924,8 @@
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
   document.addEventListener('keydown', (e) => {
     if (gone) return;
-    if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e)) {
+    const inOtherWidget = document.activeElement?.localName.includes('-') && document.activeElement !== host; // e.g. an input in a closed shadow root
+    if ((e.key === 'c' || e.key === 'C' || e.code === 'KeyC') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !typing(e) && !inOtherWidget) {
       e.preventDefault();
       setOn(!on);
       return;
@@ -913,7 +940,7 @@
   // Always ready to pin: a click on the page (not on a link or control) opens a new comment there.
   // Alt/Option-click pins on links and controls too. With a comment open, the first click outside only closes it.
   const INTERACTIVE =
-    'a, button, input, textarea, select, label, summary, video[controls], audio, iframe, [contenteditable], [role="button"], [role="link"], [onclick]';
+    'a, button, input, textarea, select, label, summary, video[controls], audio, iframe, [contenteditable], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"], [tabindex]:not([tabindex="-1"]), [onclick]';
   // Drag (mouse or pen) to mark an area instead of a point. Touch keeps scrolling.
   let drag = null;
   let afterDrag = false;
@@ -994,6 +1021,7 @@
   document.addEventListener('click', (e) => {
     if (e.composedPath().includes(host)) return;
     if (draft || openId) {
+      if ([...root.querySelectorAll('textarea')].some((t) => t.value.trim())) return; // typed text stays; Escape discards it
       draft = null;
       openId = null;
       render();
@@ -1017,6 +1045,33 @@
     });
   };
   addEventListener('resize', reflow);
+  addEventListener('scroll', (e) => e.target !== document && !host.contains(e.target) && reflow(), { capture: true, passive: true });
+
+  // Client-side navigation (pushState, back/forward, Astro view transitions): comments follow the new page,
+  // and the layer comes back if the page swapped out <body>.
+  const navigated = () => {
+    if (gone) return;
+    if (!host.isConnected && document.body) document.body.append(host);
+    if (!fonts.isConnected) document.head.append(fonts);
+    if (pageNow() === page) return;
+    page = pageNow();
+    seen = readSeen();
+    comments = [];
+    draft = null;
+    openId = null;
+    render();
+    load();
+  };
+  for (const m of ['pushState', 'replaceState']) {
+    const original = history[m];
+    history[m] = function (...args) {
+      const out = original.apply(this, args);
+      queueMicrotask(navigated);
+      return out;
+    };
+  }
+  addEventListener('popstate', navigated);
+  document.addEventListener('astro:after-swap', navigated);
   // Pick up comments others left while this tab was in the background.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && !draft && !root.activeElement) load();
@@ -1056,4 +1111,57 @@
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
+
+  // Local mode (local.mjs sets data-live): one event stream while the tab is visible, so many tabs don't use up
+  // the browser's connections. The page reloads when its files change, keeping the scroll position, and the
+  // comments refresh when someone else, like an agent, changes them. A label says which Claude session listens.
+  if (script?.dataset.live) {
+    const key = 'lab-scroll:' + location.pathname;
+    try {
+      const y = sessionStorage.getItem(key);
+      if (y !== null) {
+        sessionStorage.removeItem(key);
+        addEventListener('load', () => scrollTo(0, +y));
+      }
+    } catch {}
+    const busy = () => draft || root.activeElement;
+    const reload = () => {
+      if (busy()) return setTimeout(reload, 500);
+      try {
+        sessionStorage.setItem(key, String(scrollY));
+      } catch {}
+      location.reload();
+    };
+    const who = document.createElement('a');
+    who.className = 'listener';
+    who.hidden = true;
+    root.append(who);
+    let stream = null;
+    let seen = null;
+    const connect = () => {
+      if (stream || document.hidden) return;
+      stream = new EventSource(script.dataset.live);
+      stream.onmessage = (e) => {
+        const v = JSON.parse(e.data);
+        if (String(v.files) !== script.dataset.version) return reload();
+        if (seen !== null && v.comments !== seen) {
+          if (busy()) return;
+          load();
+        }
+        seen = v.comments;
+        const s = v.session;
+        who.replaceChildren(Object.assign(document.createElement('span'), { textContent: 'talking to' }), s ? s.name : 'no Claude session');
+        if (s?.url) Object.assign(who, { href: s.url, target: '_blank' });
+        else who.removeAttribute('href');
+        who.title = s?.resume || (s ? '' : 'Claude: node local.mjs wait');
+        who.hidden = false;
+      };
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) return connect();
+      stream?.close();
+      stream = null;
+    });
+    connect();
+  }
 })();
