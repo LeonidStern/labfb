@@ -1263,8 +1263,10 @@
         const s = v.session;
         const mode = s ? v.mode || 'listening' : 'away';
         const span = (t) => Object.assign(document.createElement('span'), { textContent: t });
-        if (mode === 'listening') who.replaceChildren(span('talking to'), s.name);
-        else if (mode === 'working') who.replaceChildren(s.name, span('is working'));
+        // "Claude is working (ooze)": Claude first, the session's name after it in brackets.
+        const tag = s && s.name !== 'Claude' ? [span(`(${s.name})`)] : [];
+        if (mode === 'listening') who.replaceChildren(span('talking to'), 'Claude', ...tag);
+        else if (mode === 'working') who.replaceChildren('Claude', span('is working'), ...tag);
         else who.replaceChildren(span('no Claude listening'));
         who.classList.toggle('idle', mode === 'away');
         if (s?.url && mode !== 'away') Object.assign(who, { href: s.url, target: '_blank' });
