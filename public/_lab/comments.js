@@ -681,7 +681,11 @@
       busy = true;
       error.textContent = '';
       try {
-        await onSubmit(name.value.trim(), text.value.trim());
+        const result = await onSubmit(name.value.trim(), text.value.trim());
+        if (result?.keep) {
+          text.value = '';
+          sync();
+        }
       } catch (e) {
         error.textContent = e.message;
         sync();
@@ -825,7 +829,7 @@
   function threadCard(c, fresh = new Set()) {
     const card = el('div', { class: 'card' });
     card.addEventListener('click', (e) => e.stopPropagation());
-    for (const item of [c, ...repliesOf(c.id)]) {
+    const itemEl = (item) => {
       const box = el('div', { class: 'item' });
       const meta = el('div', { class: 'meta' });
       meta.append(el('b', {}, item.name), el('span', { class: 'ago', title: when(item.createdAt) }, ago(item.createdAt)));
@@ -833,8 +837,9 @@
       // The number the agent text uses for this thread.
       if (item === c && !c.resolved) meta.append(el('span', { class: 'num', title: 'comment number, as in the agent link' }, String(numberOf(c))));
       box.append(meta, el('div', { class: 'text' }, item.text));
-      card.append(box);
-    }
+      return box;
+    };
+    for (const item of [c, ...repliesOf(c.id)]) card.append(itemEl(item));
     if (isAdmin) {
       const actions = el('div', { class: 'row' });
       const resolve = el('button', { class: 'btn', type: 'button' }, c.resolved ? 'reopen' : 'resolve');
@@ -862,7 +867,10 @@
           const { comment } = await send({ name, text, parent: c.id });
           comments.push(comment);
           markSeen([comment]);
-          render();
+          // Add the reply where it belongs instead of redrawing the card, so nothing on screen blinks
+          // and the reply box keeps its focus for the next one.
+          card.querySelectorAll('.item')[repliesOf(c.id).length - 1].after(itemEl(comment));
+          return { keep: true };
         },
       }),
     );
