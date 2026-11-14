@@ -46,4 +46,4 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
 
 Tested with Claude: on a page with a photo, code and a video, Fable, Sonnet and Haiku found every spot from the link alone (file, pixel, line, second), see [bench](bench/). Admin links and deleting are tested across three labs in [bench/labs](bench/labs/). The script is 19 KB gzipped and loads after the page. Links are hidden, not locked, so don't put anything confidential there.
 
-MIT · Inter under the SIL OFL · made by [OOZE](https://ooze.design)
+MIT · Inter under the SIL OFL · made by [leonidstern](https://github.com/LeonidStern) · [OOZE](https://ooze.design)
