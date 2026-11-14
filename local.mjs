@@ -631,12 +631,50 @@ const inject = (html, tag) => {
   const inScript = at !== -1 && lower.lastIndexOf('<script', at) > lower.lastIndexOf('</script>', at);
   return at === -1 || inScript ? html + tag : html.slice(0, at) + tag + html.slice(at);
 };
+// Every page under a folder, as paths relative to it: the shallowest index pages first, then by path.
+const pagesUnder = (top) => {
+  const out = [];
+  const walk = (dir, depth) => {
+    for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (d.name.startsWith('.') || d.name === 'node_modules') continue;
+      const full = path.join(dir, d.name);
+      if (d.isDirectory() && depth < 6) walk(full, depth + 1);
+      else if (/\.html?$/i.test(d.name)) out.push(path.relative(top, full));
+    }
+  };
+  walk(top, 0);
+  const rank = (rel) => [rel.split(path.sep).some((seg) => seg.startsWith('_')) ? 1 : 0, rel.split(path.sep).length, /^index\.html?$/i.test(path.basename(rel)) ? 0 : 1];
+  return out.sort((a, b) => {
+    const [x, y] = [rank(a), rank(b)];
+    return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || a.localeCompare(b);
+  });
+};
+const urlOf = (rel) => '/' + rel.split(path.sep).map(encodeURIComponent).join('/').replace(/(^|\/)index\.html?$/i, '$1');
+const titleOf = (file) => {
+  try {
+    const head = fs.readFileSync(file, 'utf8').slice(0, 4000);
+    return head.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1].trim() || '';
+  } catch {
+    return '';
+  }
+};
+// A folder with no index.html: its pages, wherever they are below it, not its subfolders.
 const listing = (res, dir, urlPath) => {
-  const items = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => !d.name.startsWith('.') && (d.isDirectory() || /\.html?$/i.test(d.name)));
   const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
-  const li = items.map((d) => `<li><a href="${urlPath}${encodeURIComponent(d.name)}${d.isDirectory() ? '/' : ''}">${esc(d.name)}</a></li>`).join('');
+  const li = pagesUnder(dir)
+    .map((rel) => {
+      const title = titleOf(path.join(dir, rel));
+      const href = urlPath.replace(/\/$/, '') + urlOf(rel);
+      return `<li><a href="${esc(href)}">${esc(title || rel)}</a>${title ? ` <span style="opacity:.55">${esc(rel)}</span>` : ''}</li>`;
+    })
+    .join('');
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-  res.end(`<!doctype html><meta charset=utf-8><title>lab</title><body style="font:15px/1.6 system-ui;margin:40px"><ul>${li || '<li>no pages yet</li>'}</ul></body>`);
+  res.end(
+    `<!doctype html><meta charset=utf-8><title>labfb · ${esc(path.basename(dir))}</title>` +
+      `<body style="font:15px/1.6 system-ui;margin:40px;max-width:640px"><h1 style="font-size:17px;margin:0 0 4px">Pages in ${esc(path.basename(dir))}</h1>` +
+      `<p style="margin:0 0 16px;opacity:.6">Open one, then press c (or hold Option) and click to comment.</p>` +
+      `<ul style="padding-left:20px">${li || '<li>No HTML pages here. Running a dev server? Start it, then run labfb again.</li>'}</ul></body>`,
+  );
 };
 
 const handler = async (req, res) => {
@@ -835,7 +873,11 @@ server.on('listening', async () => {
   console.log(`[lab] Claude: run \`${CMD} wait\` in the background from ${ROOT}; it ends with the next comment.`);
   console.log(FAST ? '[lab] quick model on: small changes from this computer are tried first (--no-fast turns it off)'
     : '[lab] quick model off (it needs the claude command)');
-  if (!opts['no-open']) spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [origin + '/'], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+  // Open a page, not a list of folders: the project's main page when there's no index.html at the top.
+  const first = !PROXY && !fs.existsSync(path.join(ROOT, 'index.html')) ? pagesUnder(ROOT)[0] : null;
+  const start = first ? urlOf(first) : '/';
+  if (first) console.log(`[lab] opening ${first} (no index.html at the top; ${origin}/ lists every page)`);
+  if (!opts['no-open']) spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [origin + start], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
 });
 const bye = () => {
   try {

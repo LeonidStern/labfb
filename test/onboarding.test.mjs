@@ -59,3 +59,31 @@ test('in a project, a bare run finds the dev server running in that folder', { s
   assert.match(html, /dev page/);
   assert.match(html, /_lab\/comments\.js/);
 });
+
+test('a folder with no index.html at the top lists its pages, not its folders, and opens the first one', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-pages-')));
+  fs.mkdirSync(path.join(dir, 'site/about'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'lib'));
+  fs.writeFileSync(path.join(dir, 'lib/x.js'), '');
+  fs.writeFileSync(path.join(dir, 'site/index.html'), '<title>Home</title><h1>home</h1>');
+  fs.writeFileSync(path.join(dir, 'site/about/team.html'), '<h1>team</h1>');
+  const port = String(4900 + Math.floor(Math.random() * 90));
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', port], { cwd: dir });
+  kids.push(lab);
+  let out = '';
+  lab.stdout.on('data', (d) => (out += d));
+  let html = '';
+  for (let i = 0; i < 50 && !html; i++) {
+    try {
+      html = await (await fetch(`http://localhost:${port}/`)).text();
+    } catch {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  assert.match(html, /href="\/site\/">Home</);
+  assert.match(html, /href="\/site\/about\/team\.html">site\/about\/team\.html</);
+  assert.doesNotMatch(html, /lib/);
+  assert.match(out, /opening site\/index\.html/);
+  assert.match(await (await fetch(`http://localhost:${port}/site/`)).text(), /_lab\/comments\.js/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
