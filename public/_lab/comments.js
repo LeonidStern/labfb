@@ -861,7 +861,7 @@
             comments.push(comment);
             markSeen([comment]);
             draft = null;
-            openId = comment.id;
+            openId = null; // like Figma: once posted, the card closes and the new pin stays (click it to open)
             posted = comment.id;
             render();
           },
