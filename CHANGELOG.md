@@ -2,6 +2,12 @@
 
 Versions follow [semver](https://semver.org). Before 1.0, a minor version can change how things work.
 
+## Unreleased
+
+- Run it in your project: `npx @leonidstern/labfb`, no folder. With the project's dev server running, it puts comments on top of it by itself: it finds the server run from this folder (or one inside it), even with other projects' servers running. `--proxy` with no port does the same.
+- A project with a dev server that isn't running is no longer served as a file listing of `src` and `node_modules`: it says to start the server, and names the other projects' servers it saw.
+- README: local setup is one prompt to paste into Claude Code, like the cloud lab; the plugin is the shortcut for regular use. No `<folder>` placeholders. The skill starts labfb with no folder.
+
 ## 0.4.0 · 2026-11-14
 
 - Package: `npx @leonidstern/labfb <folder>`, `--version`, `npm test`, CI on Node 20, 22 and 24.
