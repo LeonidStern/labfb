@@ -10,9 +10,14 @@ Works on text, code, photos and video files. Each comment records what's under i
 
 One domain, many repos. The lab domain is only a proxy: two rewrite lines send `/<name>/*` to each member's own repo and Vercel project, with their own pages, notes and knowledge base for their agent. Nobody shares a codebase, nobody waits on anybody.
 
-## Setup: paste this into your agent
+Two ways to use it:
 
-No guide to follow. This prompt is the whole setup.
+- **Cloud lab:** pages live on a domain, anyone with the link comments, your agent reads them by link.
+- **Local lab:** pages on your computer, you comment and Claude answers on the pin while it works. No deploy.
+
+## Cloud lab
+
+Paste this into your agent. It is the whole setup.
 
 ```text
 Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
@@ -34,16 +39,35 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
    https://<lab domain>/_lab/agent/_lab/demo shows it as text. Then delete it with header x-lab-admin: <token>.
 ```
 
-## Use
-
-- **Comment:** open a page through the lab domain, press `c`, then click or drag. Drag your own pin to move it.
-- **Page hints:** `data-uncommentable` keeps comments off a part of the page; `data-comment-target` pins any click inside to that element. Same names as Claude artifact comments.
-- **Read:** `https://<lab domain>/_lab/agent/<page path>` returns every open comment as plain text.
+- **Comment:** open a page through the lab domain, press `c` (or hold Option), then click or drag. Drag your own pin to move it.
+- **Read:** `https://<lab domain>/_lab/agent/<page path>` returns every open comment as plain text. Paste it into your agent.
 - **Resolve or delete:** open any page once with `#lab-admin=<token>`.
 - **Admins:** ask your agent "make a lab admin link for anna on /anna". With your token it gets a link that lets anna resolve and delete comments on `/anna` pages only. One browser can hold links for several labs. Nothing to set up per person (how: top of `api/lab-comments.mjs`).
-- **Local:** `node local.mjs <folder>` puts comments on pages on your computer, no deploy. Claude runs `node local.mjs wait`, which ends with your next comment, fixes the file (the page reloads) and answers on the pin. `--wifi` lets a phone at home join. `--fast` lets a quick model make small changes first. `--proxy 4321` puts comments on a running Astro, Next or Vite dev server. `node local.mjs preview <folder>` opens it in the Claude desktop app's preview pane. `node local.mjs --help`.
+
+## Local lab
+
+Paste this into Claude Code. It needs Node 20 or newer, nothing to install.
+
+```text
+Set up labfb local mode for me.
+
+1. Clone https://github.com/leonidstern/labfb next to my projects.
+2. Copy its skill/SKILL.md to ~/.claude/skills/labfb/SKILL.md, so you know the loop in every session.
+3. Start it on <my folder>: node <labfb>/local.mjs <my folder>
+   (or add --proxy <port> if a dev server is already running there).
+4. Listen for my comments and answer them on the pins, as the skill says.
+```
+
+- **Comment:** press `c` (or hold Option) and click. Claude edits the file, the page reloads, and the answer shows on the pin. The label at the bottom says whether Claude is listening or working.
+- **Options:** `--proxy 4321` puts comments on a running Astro, Next or Vite dev server. `--fast` lets a quick model make small changes first. `--wifi` lets a phone at home join. `node local.mjs preview <folder>` opens it in the Claude desktop app's preview pane. `node local.mjs --help` lists the rest.
+- **Files:** comments stay in `<folder>/.lab`, one per project. Delete it to start over.
+
+## Both
+
+- **Page hints:** `data-uncommentable` keeps comments off a part of the page; `data-comment-target` pins any click inside to that element. Same names as Claude artifact comments.
+- **Skill:** [skill/SKILL.md](skill/SKILL.md) tells Claude how to read a cloud link and how to run the local loop.
 - **Theme:** set `--lab-accent`, `--lab-bg`, `--lab-fg`, `--lab-radius` or `--lab-font` on `[data-lab-comments]`.
 
 Tested with Claude: on a page with a photo, code and a video, Fable, Sonnet and Haiku found every spot from the link alone (file, pixel, line, second), see [bench](bench/). Admin links and deleting are tested across three labs in [bench/labs](bench/labs/). The script is 19 KB gzipped and loads after the page. Links are hidden, not locked, so don't put anything confidential there.
 
-MIT · Inter under the SIL OFL · made by [OOZE](https://ooze.design)
+MIT · Inter under the SIL OFL · made by [leonidstern](https://github.com/LeonidStern) · [OOZE](https://ooze.design)

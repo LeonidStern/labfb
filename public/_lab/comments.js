@@ -133,6 +133,8 @@
       button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
                    letter-spacing: .01em; border-radius: 4px; transition: color .12s; }
       button.btn:hover { color: var(--_fg); }
+      button.btn.danger, button.btn.danger:hover { color: #e5484d; }
+      .row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: .01em; padding: 2px 0; animation: lab-fade .12s ease-out; }
       .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
       .card .composer { margin-top: 14px; }
       .box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "text send"; align-items: center; column-gap: 8px;
@@ -859,7 +861,7 @@
             comments.push(comment);
             markSeen([comment]);
             draft = null;
-            openId = comment.id;
+            openId = null; // like Figma: once posted, the card closes and the new pin stays (click it to open)
             posted = comment.id;
             render();
           },
@@ -975,12 +977,29 @@
         }
       });
       const del = el('button', { class: 'btn', type: 'button' }, 'delete');
-      del.addEventListener('click', async () => {
-        if (!confirm('delete this comment and its replies?')) return;
+      // Asked in the card itself, not the browser's dialog: the row swaps to the question, same height, nothing moves.
+      const yes = el('button', { class: 'btn danger', type: 'button' }, 'delete');
+      const no = el('button', { class: 'btn', type: 'button' }, 'cancel');
+      const back = () => {
+        actions.replaceChildren(resolve, del);
+        del.focus();
+      };
+      del.addEventListener('click', () => {
+        actions.replaceChildren(el('span', { class: 'ask' }, repliesOf(c.id).length ? 'delete thread?' : 'delete comment?'), yes, no);
+        no.focus();
+      });
+      no.addEventListener('click', back);
+      actions.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && yes.isConnected) {
+          e.stopPropagation();
+          back();
+        }
+      });
+      yes.addEventListener('click', async () => {
         try {
           await send({ action: 'delete', id: c.id }); // the API deletes the replies with it
         } catch {
-          return failed(del);
+          return failed(yes);
         }
         comments = comments.filter((x) => x.id !== c.id && x.parent !== c.id);
         openId = null;
@@ -1025,6 +1044,12 @@
     render();
   };
   toggleBtn.addEventListener('click', () => setOn(!on));
+  // Option-click (or Option-drag) with comments hidden still pins: comments come back with the new one.
+  const showAgain = () => {
+    if (on) return;
+    on = true;
+    store.set('lab-on', '1');
+  };
   copyBtn.addEventListener('click', () => copy(agentLink(), copyBtn));
   const typing = (e) =>
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
@@ -1067,7 +1092,7 @@
   document.addEventListener(
     'pointerdown',
     (e) => {
-      if (!on || draft || openId || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if ((!on && !e.altKey) || draft || openId || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (e.composedPath().includes(host)) return;
       if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
       if (e.target instanceof Element && e.target.closest(OFF)) return;
@@ -1109,6 +1134,7 @@
     setTimeout(() => (afterDrag = false), 0);
     getSelection?.()?.removeAllRanges();
     if (Math.abs(d.x1 - d.x0) < 12 || Math.abs(d.y1 - d.y0) < 12) return;
+    showAgain();
     draft = { anchor: zoneAnchor(d) };
     render();
   };
@@ -1136,11 +1162,12 @@
       render();
       return;
     }
-    if (!on || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if ((!on && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
     if (e.altKey) e.preventDefault();
     else if (e.defaultPrevented || (e.target instanceof Element && e.target.closest(INTERACTIVE))) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
     if (String(getSelection?.() || '').trim()) return;
+    showAgain();
     draft = { anchor: anchorAt(e.clientX, e.clientY) };
     render();
   });
@@ -1206,6 +1233,13 @@
     "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M3 23V12.5a9.5 9.5 0 1 1 9.5 9.5H4z' fill='black' stroke='white' stroke-width='2'/%3E%3C/svg%3E\") 3 23, crosshair";
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   fonts.textContent += `html.lab-pinning body, html.lab-pinning body *:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [data-lab-comments]) { cursor: ${PIN_CURSOR}; }`;
+  // Holding Option (Alt) shows the pin cursor on links and controls too, since Option-click pins there.
+  fonts.textContent += `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: ${PIN_CURSOR} !important; }`;
+  const setAlt = (down) => document.documentElement.classList.toggle('lab-alt', Boolean(down));
+  addEventListener('keydown', (e) => e.key === 'Alt' && setAlt(true), true);
+  addEventListener('keyup', (e) => e.key === 'Alt' && setAlt(false), true);
+  addEventListener('pointermove', (e) => setAlt(e.altKey), { capture: true, passive: true }); // Option pressed while another window had focus
+  addEventListener('blur', () => setAlt(false));
 
   const start = () => {
     document.head.append(fonts);
