@@ -133,6 +133,8 @@
       button.btn { border: 0; padding: 2px 0; cursor: pointer; background: none; color: var(--_muted); font-size: 12px;
                    letter-spacing: .01em; border-radius: 4px; transition: color .12s; }
       button.btn:hover { color: var(--_fg); }
+      button.btn.danger, button.btn.danger:hover { color: #e5484d; }
+      .row .ask { white-space: nowrap; color: var(--_fg); font-size: 12px; letter-spacing: .01em; padding: 2px 0; animation: lab-fade .12s ease-out; }
       .float { position: absolute; width: 320px; max-width: calc(100vw - 24px); transform-origin: 0 20px; z-index: 1; }
       .card .composer { margin-top: 14px; }
       .box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "text send"; align-items: center; column-gap: 8px;
@@ -975,12 +977,29 @@
         }
       });
       const del = el('button', { class: 'btn', type: 'button' }, 'delete');
-      del.addEventListener('click', async () => {
-        if (!confirm('delete this comment and its replies?')) return;
+      // Asked in the card itself, not the browser's dialog: the row swaps to the question, same height, nothing moves.
+      const yes = el('button', { class: 'btn danger', type: 'button' }, 'delete');
+      const no = el('button', { class: 'btn', type: 'button' }, 'cancel');
+      const back = () => {
+        actions.replaceChildren(resolve, del);
+        del.focus();
+      };
+      del.addEventListener('click', () => {
+        actions.replaceChildren(el('span', { class: 'ask' }, repliesOf(c.id).length ? 'delete thread?' : 'delete comment?'), yes, no);
+        no.focus();
+      });
+      no.addEventListener('click', back);
+      actions.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && yes.isConnected) {
+          e.stopPropagation();
+          back();
+        }
+      });
+      yes.addEventListener('click', async () => {
         try {
           await send({ action: 'delete', id: c.id }); // the API deletes the replies with it
         } catch {
-          return failed(del);
+          return failed(yes);
         }
         comments = comments.filter((x) => x.id !== c.id && x.parent !== c.id);
         openId = null;
