@@ -9,6 +9,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 - A project with a dev server that isn't running is no longer served as a file listing of `src` and `node_modules`: it says to start the server, and names the other projects' servers it saw.
 - README: local setup is one prompt to paste into Claude Code, like the cloud lab; the plugin is the shortcut for regular use. No `<folder>` placeholders. The skill starts labfb with no folder.
 - A folder with no `index.html` at the top opens its first page (`public/index.html`, say) instead of a list of folders. The list at `/` shows every page with its title, and leaves out folders with no pages.
+- `labfb pages`: every running lab's pages as a Markdown list in `.lab/lab-pages.md`, with open comment counts. Running labs register in `~/.labfb/servers/` (removed on exit), and each lab answers `/_lab/pages` for this computer only. The skill sends the file to the person after starting a lab, so it sits under Outputs in the desktop app.
 
 ## 0.4.0 · 2026-11-14
 

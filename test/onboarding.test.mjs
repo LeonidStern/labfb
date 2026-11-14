@@ -87,3 +87,32 @@ test('a folder with no index.html at the top lists its pages, not its folders, a
   assert.match(await (await fetch(`http://localhost:${port}/site/`)).text(), /_lab\/comments\.js/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('a running lab is listed for the Lab panel: a registry file while it runs, its pages with open comments', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-reg-')));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-'));
+  fs.writeFileSync(path.join(dir, 'index.html'), '<title>Start</title><h1>start</h1>');
+  const port = String(4990 + Math.floor(Math.random() * 9));
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', port], { cwd: dir, env: { ...process.env, LABFB_HOME: home } });
+  let info = null;
+  for (let i = 0; i < 50 && !info; i++) {
+    try {
+      info = await (await fetch(`http://localhost:${port}/_lab/pages`)).json();
+    } catch {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  const reg = path.join(home, 'servers', `${port}.json`);
+  assert.equal(JSON.parse(fs.readFileSync(reg, 'utf8')).root, dir);
+  assert.equal(info.name, path.basename(dir));
+  assert.deepEqual(info.pages.map((p) => [p.title, p.file, p.open]), [['Start', 'index.html', 0]]);
+  // `pages` turns every running lab into a Markdown list in .lab/lab-pages.md.
+  const out = await new Promise((resolve) => execFile(process.execPath, [LAB, 'pages'], { cwd: dir, env: { ...process.env, LABFB_HOME: home } }, (err, stdout) => resolve(stdout.trim())));
+  assert.equal(out, path.join(dir, '.lab', 'lab-pages.md'));
+  assert.equal(fs.readFileSync(out, 'utf8'), `- [Start](http://localhost:${port}/)\n`);
+  lab.kill();
+  await new Promise((r) => lab.on('exit', r));
+  assert.ok(!fs.existsSync(reg), 'registry file removed on exit');
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(home, { recursive: true, force: true });
+});

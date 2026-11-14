@@ -81,6 +81,7 @@ Without Claude, run `npx @leonidstern/labfb` in your project:
 - **Plain HTML files:** served as they are. Pages somewhere else: `npx @leonidstern/labfb dist`.
 
 - **Comment:** press `c` (or hold Option) and click. Drag to mark an area.
+- **All your labs:** `npx @leonidstern/labfb pages` writes `.lab/lab-pages.md`, every running lab's pages as links with open comment counts. Claude sends it to you, so in the desktop app it sits under Outputs.
 - **Options:** `--no-fast` turns off the quick model, `--wifi` lets a phone at home join. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
 - **Files:** comments stay in `.lab/` in the project. Delete it to start over. Add `.lab/` to `.gitignore`.
 
