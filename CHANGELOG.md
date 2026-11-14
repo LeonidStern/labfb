@@ -5,7 +5,7 @@ Versions follow [semver](https://semver.org). Before 1.0, a minor version can ch
 ## 0.4.0 · 2026-11-14
 
 - Package: `npx @leonidstern/labfb <folder>`, `--version`, `npm test`, CI on Node 20, 22 and 24.
-- Claude plugin: `/plugin marketplace add leonidstern/labfb`, then `/plugin install labfb@labfb`. The skill moved to `skills/labfb/`.
+- Claude plugin: `/plugin marketplace add leonidstern/labfb`, then `/plugin install labfb@leonidstern`. The skill moved to `skills/labfb/`.
 - Delete asks inside the card, not with the browser's dialog.
 - Hold Option to comment on links and buttons, also while comments are hidden with `c`.
 - Posting a new comment closes its card; the pin stays.

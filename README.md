@@ -64,7 +64,7 @@ Then tell Claude Code to listen. The skill teaches it the loop (wait for a comme
 
 ```text
 /plugin marketplace add leonidstern/labfb
-/plugin install labfb@labfb
+/plugin install labfb@leonidstern
 ```
 
 Or paste this into Claude Code:

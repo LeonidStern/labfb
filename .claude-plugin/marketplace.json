@@ -1,6 +1,9 @@
 {
-  "name": "labfb",
-  "owner": { "name": "leonidstern", "url": "https://github.com/LeonidStern" },
+  "name": "leonidstern",
+  "owner": {
+    "name": "leonidstern",
+    "url": "https://github.com/LeonidStern"
+  },
   "plugins": [
     {
       "name": "labfb",
