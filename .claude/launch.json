@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lab demo",
+      "program": "local.mjs",
+      "args": ["bench/site", "--no-open"],
+      "port": 4400,
+      "autoPort": true
+    }
+  ]
+}

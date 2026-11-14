@@ -101,6 +101,8 @@
                         animation: lab-halo .9s cubic-bezier(.2, .7, .3, 1) forwards; }
       .pin.resolved { color: var(--_muted); }
       .pin.moved { opacity: .5; }
+      .pin.grab { touch-action: none; }
+      button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 30%, transparent), 0 8px 20px rgba(0,0,0,.22); }
       .zone { position: absolute; background: color-mix(in srgb, var(--_accent) 5%, transparent);
               border-radius: var(--_radius); pointer-events: none; }
       .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
@@ -340,7 +342,8 @@
 
   function anchorAt(clientX, clientY) {
     const stack = document.elementsFromPoint(clientX, clientY).filter((n) => n !== host && n !== document.documentElement);
-    const target = stack[0] || document.body;
+    // data-comment-target: a click anywhere inside snaps to that element (same attribute as Claude artifacts).
+    const target = stack[0]?.closest('[data-comment-target]') || stack[0] || document.body;
     const rect = target.getBoundingClientRect();
     const anchor = {
       selector: selectorFor(target),
@@ -589,7 +592,7 @@
     } catch {
       // Keep what is already on screen when a refresh fails.
     }
-    if (!typed()) render(); // someone is typing: the new comments show on the next render, the text stays
+    if (!typed() && !grabbing) render(); // someone is typing: the new comments show on the next render, the text stays
   }
 
   async function send(payload) {
@@ -785,19 +788,22 @@
       const { left, top, moved, zone } = position(c.anchor || {});
       if (openId === c.id) drawZone(zone, `saved${anim}`);
       const news = unread(c);
+      const movable = !zone && (isAdmin || store.get(`lab-edit:${c.id}`));
       const pin = el(
         'button',
         {
-          class: `pin${c.resolved ? ' resolved' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${posted === c.id ? ' in' : ''}`,
+          class: `pin${c.resolved ? ' resolved' : ''}${news.length ? ' new' : ''}${moved ? ' moved' : ''}${posted === c.id ? ' in' : ''}${movable ? ' grab' : ''}`,
           type: 'button',
-          title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${moved ? ' · the spot it was pinned to has changed' : ''}`,
+          title: `${c.resolved ? '' : `${numberOf(c)} · `}${c.name}${moved ? ' · the spot it was pinned to has changed' : ''}${movable ? ' · drag to move' : ''}`,
         },
         c.resolved ? '✓' : initial(c.name),
       );
       pin.style.left = `${left}px`;
       pin.style.top = `${top}px`;
+      if (movable) grab(pin, c);
       pin.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (pin.dataset.dragged) return;
         openId = openId === c.id ? null : c.id;
         draft = null;
         render();
@@ -828,7 +834,8 @@
           placeholder: 'add a comment',
           autofocus: true,
           onSubmit: async (name, text) => {
-            const { comment } = await send({ name, text, anchor });
+            const { comment, edit } = await send({ name, text, anchor });
+            if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
             comments.push(comment);
             markSeen([comment]);
             draft = null;
@@ -842,6 +849,54 @@
       else placeBeside(float, left, top);
     }
     done();
+  }
+
+  // Drag a pin to fix its spot: whoever started the thread (its key is kept in their browser) or an admin.
+  // The pin's tip (bottom left) lands where it is dropped; the new spot is saved like a fresh pin.
+  let grabbing = false;
+  function grab(pin, c) {
+    pin.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const r = pin.getBoundingClientRect();
+      const tip = { dx: e.clientX - r.left, dy: e.clientY - r.bottom };
+      const start = { x: e.clientX, y: e.clientY, left: parseFloat(pin.style.left), top: parseFloat(pin.style.top) };
+      let moving = false;
+      grabbing = true;
+      pin.setPointerCapture(e.pointerId);
+      const move = (ev) => {
+        if (!moving && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
+        moving = true;
+        pin.classList.add('dragging');
+        pin.style.left = `${start.left + ev.clientX - start.x}px`;
+        pin.style.top = `${start.top + ev.clientY - start.y}px`;
+      };
+      const up = async (ev) => {
+        pin.removeEventListener('pointermove', move);
+        pin.removeEventListener('pointerup', up);
+        pin.removeEventListener('pointercancel', up);
+        grabbing = false;
+        if (!moving) return;
+        pin.dataset.dragged = '1'; // the click that follows is the drop, not an open
+        setTimeout(() => delete pin.dataset.dragged, 0);
+        const x = ev.clientX - tip.dx;
+        const y = ev.clientY - tip.dy;
+        const under = document.elementsFromPoint(x, y).find((n) => n !== host);
+        if (ev.type === 'pointercancel' || x < 0 || y < 0 || x > innerWidth || y > innerHeight || under?.closest(OFF)) return render();
+        const before = c.anchor;
+        c.anchor = anchorAt(x, y);
+        render();
+        try {
+          const { comment } = await send({ action: 'move', id: c.id, anchor: c.anchor, edit: store.get(`lab-edit:${c.id}`) || undefined });
+          Object.assign(c, comment);
+        } catch {
+          c.anchor = before; // not saved: back where it was
+          render();
+        }
+      };
+      pin.addEventListener('pointermove', move);
+      pin.addEventListener('pointerup', up);
+      pin.addEventListener('pointercancel', up);
+    });
   }
 
   function threadCard(c, fresh = new Set()) {
@@ -941,6 +996,8 @@
   // Alt/Option-click pins on links and controls too. With a comment open, the first click outside only closes it.
   const INTERACTIVE =
     'a, button, input, textarea, select, label, summary, video[controls], audio, iframe, [contenteditable], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"], [tabindex]:not([tabindex="-1"]), [onclick]';
+  // data-uncommentable: no new pins or areas start inside this part of the page (same attribute as Claude artifacts).
+  const OFF = '[data-uncommentable]';
   // Drag (mouse or pen) to mark an area instead of a point. Touch keeps scrolling.
   let drag = null;
   let afterDrag = false;
@@ -962,6 +1019,7 @@
       if (!on || draft || openId || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (e.composedPath().includes(host)) return;
       if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+      if (e.target instanceof Element && e.target.closest(OFF)) return;
       drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false };
     },
     true,
@@ -1030,6 +1088,7 @@
     if (!on || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
     if (e.altKey) e.preventDefault();
     else if (e.defaultPrevented || (e.target instanceof Element && e.target.closest(INTERACTIVE))) return;
+    if (e.target instanceof Element && e.target.closest(OFF)) return;
     if (String(getSelection?.() || '').trim()) return;
     draft = { anchor: anchorAt(e.clientX, e.clientY) };
     render();
@@ -1040,7 +1099,7 @@
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       // Keep an open composer's text: only re-place when nothing is being typed.
-      if (draft || root.activeElement) return;
+      if (draft || root.activeElement || grabbing) return;
       render();
     });
   };
@@ -1118,17 +1177,19 @@
   if (script?.dataset.live) {
     const key = 'lab-scroll:' + location.pathname;
     try {
-      const y = sessionStorage.getItem(key);
-      if (y !== null) {
+      // The scroll position and the open thread come back after a reload, so an answer shows where you left it.
+      const kept = JSON.parse(sessionStorage.getItem(key) || 'null');
+      if (kept !== null) {
         sessionStorage.removeItem(key);
-        addEventListener('load', () => scrollTo(0, +y));
+        if (kept.open) openId = kept.open;
+        addEventListener('load', () => scrollTo(0, +(kept.y ?? kept)));
       }
     } catch {}
     const busy = () => draft || root.activeElement;
     const reload = () => {
       if (busy()) return setTimeout(reload, 500);
       try {
-        sessionStorage.setItem(key, String(scrollY));
+        sessionStorage.setItem(key, JSON.stringify({ y: scrollY, open: openId }));
       } catch {}
       location.reload();
     };
