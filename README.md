@@ -83,7 +83,7 @@ Without Claude, run `npx @leonidstern/labfb` in your project:
 
 - **Comment:** press `c` (or hold Option) and click. Drag to mark an area.
 - **One lab per project:** `npx @leonidstern/labfb list` shows the labs running on your computer. Starting one in a folder that a running lab already serves opens that lab instead (`--new` starts a separate one anyway).
-- **All your labs:** `npx @leonidstern/labfb pages` writes `.lab/lab-pages.md`, every running lab's pages as links with open comment counts. `npx @leonidstern/labfb add <url>` adds a cloud lab page to that list. Claude sends it to you, so in the desktop app it sits under Outputs.
+- **This project's pages:** `npx @leonidstern/labfb pages` writes `.lab/lab-pages.md`, the project's lab pages as links with open comment counts (`--all` for every lab on your computer). `npx @leonidstern/labfb add <url>` adds a cloud lab page to the project's list. Claude sends it to you, so in the desktop app it sits under Outputs.
 - **Options:** `--no-fast` turns off the quick model, `--wifi` lets a phone at home join. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
 - **Files:** comments stay in `.lab/` in the project. Delete it to start over. Add `.lab/` to `.gitignore`.
 

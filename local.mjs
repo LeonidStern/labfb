@@ -31,10 +31,11 @@ Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
       goes to the session as usual. --no-fast turns it off.
   labfb list
       Every lab running on this computer: its address, folder, pages and open comments. Check it before starting one.
-  labfb pages
-      Write .lab/lab-pages.md here: every running lab's pages and saved cloud pages as links, with open comment counts.
+  labfb pages [--all]
+      Write .lab/lab-pages.md here: this folder's labs and saved cloud pages as links, with open comment counts.
+      --all lists every lab on this computer.
   labfb add <url> [--name "title"]   ·   labfb remove <url>
-      Save a cloud lab page (https://<lab domain>/<page>) so pages and list include it.
+      Save a cloud lab page (https://<lab domain>/<page>) for this folder, in .lab/links.json.
   labfb preview [folder]
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
 
@@ -57,7 +58,7 @@ for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--help' || a === '-h') opts.help = true;
   else if (a === '--version' || a === '-v') opts.version = true;
-  else if (['--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--new'].includes(a)) opts[a.slice(2)] = true;
+  else if (['--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--new', '--all'].includes(a)) opts[a.slice(2)] = true;
   else if (['--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a)) {
     // --proxy on its own means "find the dev server yourself".
     const v = argv[i + 1];
@@ -135,8 +136,11 @@ const runningLabs = () =>
     })
     .sort((a, b) => a.root.localeCompare(b.root));
 
-// Cloud lab pages saved with `labfb add`, so they're listed with the local ones.
-const LINKS = path.join(path.dirname(REGISTRY), 'links.json');
+// The project this is run for (a session's folder): pages lists its labs and its saved cloud pages, not every lab.
+const HERE = fs.realpathSync(path.resolve(opts.dir || '.'));
+const forHere = (lab) => lab.root === HERE || lab.root.startsWith(HERE + path.sep) || HERE.startsWith(lab.root + path.sep);
+// Cloud lab pages saved with `labfb add`, kept with the project in .lab/links.json.
+const LINKS = path.join(HERE, '.lab', 'links.json');
 const savedLinks = () => {
   try {
     return JSON.parse(fs.readFileSync(LINKS, 'utf8'));
@@ -194,7 +198,7 @@ if (pos[0] === 'list') {
     console.log(`${lab.name}  http://localhost:${lab.port}  ${lab.root}${lab.proxy ? ` (on ${lab.proxy})` : ''}${pages}`);
   }
   const links = savedLinks();
-  if (links.length) console.log(`\nSaved cloud pages:\n${links.map((l) => `${l.title || l.url}  ${l.url}`).join('\n')}`);
+  if (links.length) console.log(`\nCloud pages saved for ${HERE}:\n${links.map((l) => `${l.title || l.url}  ${l.url}`).join('\n')}`);
   process.exit(0);
 }
 
@@ -202,7 +206,7 @@ if (pos[0] === 'list') {
 // Written to .lab/lab-pages.md in this folder: a file Claude can send to the person, so the pages sit with its outputs.
 if (pos[0] === 'pages') {
   const labs = [];
-  for (const lab of runningLabs()) {
+  for (const lab of runningLabs().filter((l) => opts.all || forHere(l))) {
     try {
       const res = await fetch(`http://localhost:${lab.port}/_lab/pages`, { signal: AbortSignal.timeout(2000) });
       if (res.ok) labs.push(await res.json());
@@ -226,9 +230,9 @@ if (pos[0] === 'pages') {
     }
     lines.push('');
   }
-  const out = path.resolve(opts.dir || '.', '.lab', 'lab-pages.md');
+  const out = path.join(HERE, '.lab', 'lab-pages.md');
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, (lines.join('\n').trim() || 'No labs running, and no saved cloud pages.') + '\n');
+  fs.writeFileSync(out, (lines.join('\n').trim() || (opts.all ? 'No labs running, and no saved cloud pages.' : 'No labs for this folder, and no saved cloud pages. `pages --all` lists every lab on this computer.')) + '\n');
   console.log(out);
   process.exit(0);
 }
@@ -302,7 +306,7 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
 }
 
 // ---------- the server ----------
-const unknown = argv.find((a) => a.startsWith('--') && !['--help', '--version', '--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--new', '--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a));
+const unknown = argv.find((a) => a.startsWith('--') && !['--help', '--version', '--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--new', '--all', '--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a));
 if (unknown) die(`Unknown option ${unknown}. See: ${CMD} --help`);
 if (pos[0] && !fs.existsSync(pos[0])) die(`No folder ${pos[0]}. Run ${CMD} in your project, or name a folder (see --help)`);
 const ROOT = fs.realpathSync(path.resolve(pos[0] || '.'));

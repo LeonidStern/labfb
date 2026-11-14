@@ -154,7 +154,28 @@ test('saved cloud pages are listed with the local ones', async () => {
   assert.equal(fs.readFileSync(path.join(dir, '.lab', 'lab-pages.md'), 'utf8'), '- [Anna home](https://lab.example.invalid/anna/site/abc/home)\n');
   await run2(['remove', 'https://lab.example.invalid/anna/site/abc/home']);
   await run2(['pages']);
-  assert.match(fs.readFileSync(path.join(dir, '.lab', 'lab-pages.md'), 'utf8'), /No labs running/);
+  assert.match(fs.readFileSync(path.join(dir, '.lab', 'lab-pages.md'), 'utf8'), /No labs for this folder/);
   fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(home, { recursive: true, force: true });
+});
+
+test('pages lists this folder\'s labs only, unless --all', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-'));
+  const env = { ...process.env, LABFB_HOME: home };
+  const mk = (name) => {
+    const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `labfb-${name}-`)));
+    fs.writeFileSync(path.join(d, 'index.html'), `<title>${name}</title>`);
+    return d;
+  };
+  const [a, b] = [mk('alpha'), mk('beta')];
+  for (const [d, p] of [[a, 5600], [b, 5650]]) kids.push(spawn(process.execPath, [LAB, '--no-open', '--port', String(p + Math.floor(Math.random() * 40))], { cwd: d, env }));
+  const reg = path.join(home, 'servers');
+  for (let i = 0; i < 50 && !(fs.existsSync(reg) && fs.readdirSync(reg).length === 2); i++) await new Promise((r) => setTimeout(r, 100));
+  const pagesIn = (cwd, extra = []) => new Promise((resolve) => execFile(process.execPath, [LAB, 'pages', ...extra], { cwd, env }, (err, stdout) => resolve(fs.readFileSync(stdout.trim(), 'utf8'))));
+  const mine = await pagesIn(a);
+  assert.match(mine, /\[alpha\]/);
+  assert.doesNotMatch(mine, /beta/);
+  const all = await pagesIn(a, ['--all']);
+  assert.match(all, /\*\*labfb-alpha-.*\[alpha\][\s\S]*\*\*labfb-beta-.*\[beta\]/s);
+  for (const d of [a, b]) fs.rmSync(d, { recursive: true, force: true });
 });
