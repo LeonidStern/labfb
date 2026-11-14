@@ -31,6 +31,7 @@ Paste this into your agent. It is the whole setup.
 ```text
 Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
 
+0. First check whether I already have a lab (a Vercel project with LAB_HOST set, or a site that loads /_lab/comments.js). If I do, stop and tell me: add sites to that one instead.
 1. Fork the repo and import it into Vercel: framework preset "Other", no build command.
 2. Add Upstash Redis from the Vercel Marketplace (free tier). It sets KV_REST_API_URL and KV_REST_API_TOKEN.
 3. Set env vars: LAB_HOST=<lab domain, e.g. lab.example.com> and LAB_COMMENTS_ADMIN_TOKEN=<output of `openssl rand -hex 24`>. Tell me the token. Redeploy so the variables apply.
@@ -81,7 +82,8 @@ Without Claude, run `npx @leonidstern/labfb` in your project:
 - **Plain HTML files:** served as they are. Pages somewhere else: `npx @leonidstern/labfb dist`.
 
 - **Comment:** press `c` (or hold Option) and click. Drag to mark an area.
-- **All your labs:** `npx @leonidstern/labfb pages` writes `.lab/lab-pages.md`, every running lab's pages as links with open comment counts. Claude sends it to you, so in the desktop app it sits under Outputs.
+- **One lab per project:** `npx @leonidstern/labfb list` shows the labs running on your computer. Starting one in a folder that a running lab already serves opens that lab instead (`--new` starts a separate one anyway).
+- **All your labs:** `npx @leonidstern/labfb pages` writes `.lab/lab-pages.md`, every running lab's pages as links with open comment counts. `npx @leonidstern/labfb add <url>` adds a cloud lab page to that list. Claude sends it to you, so in the desktop app it sits under Outputs.
 - **Options:** `--no-fast` turns off the quick model, `--wifi` lets a phone at home join. `npx @leonidstern/labfb preview` opens it in the Claude desktop app's preview pane. `--help` has the rest.
 - **Files:** comments stay in `.lab/` in the project. Delete it to start over. Add `.lab/` to `.gitignore`.
 

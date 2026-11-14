@@ -25,11 +25,16 @@ Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
       --proxy <port> to pick one yourself. A folder of HTML files is served as it is at http://localhost:4400
       and reloads when files change. The folder is this one unless you name another.
       --wifi lets phones and laptops on the same wifi comment too (as guests). Use it at home only.
+      A folder that a running lab already serves opens in that lab; --new starts a separate one anyway.
       Quick model: when the claude command is installed, a quick model (claude -p, haiku) tries each new comment
       from this computer first. Small, clear changes it makes and answers "Done: …" on the pin; anything else
       goes to the session as usual. --no-fast turns it off.
+  labfb list
+      Every lab running on this computer: its address, folder, pages and open comments. Check it before starting one.
   labfb pages
-      Write .lab/lab-pages.md here: every running lab's pages as links, with open comment counts.
+      Write .lab/lab-pages.md here: every running lab's pages and saved cloud pages as links, with open comment counts.
+  labfb add <url> [--name "title"]   ·   labfb remove <url>
+      Save a cloud lab page (https://<lab domain>/<page>) so pages and list include it.
   labfb preview [folder]
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
 
@@ -52,7 +57,7 @@ for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--help' || a === '-h') opts.help = true;
   else if (a === '--version' || a === '-v') opts.version = true;
-  else if (['--wifi', '--no-open', '--resolve', '--fast', '--no-fast'].includes(a)) opts[a.slice(2)] = true;
+  else if (['--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--new'].includes(a)) opts[a.slice(2)] = true;
   else if (['--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a)) {
     // --proxy on its own means "find the dev server yourself".
     const v = argv[i + 1];
@@ -111,32 +116,111 @@ if (pos[0] === 'preview') {
   process.exit(0);
 }
 
+// ---------- the labs running on this computer ----------
+// Each lab writes ~/.labfb/servers/<port>.json while it runs; a file whose process is gone is left over and skipped.
+const REGISTRY = path.join(process.env.LABFB_HOME || path.join(os.homedir(), '.labfb'), 'servers');
+const runningLabs = () =>
+  (fs.existsSync(REGISTRY) ? fs.readdirSync(REGISTRY) : [])
+    .filter((n) => n.endsWith('.json'))
+    .flatMap((n) => {
+      const file = path.join(REGISTRY, n);
+      try {
+        const lab = JSON.parse(fs.readFileSync(file, 'utf8'));
+        process.kill(lab.pid, 0);
+        return [lab];
+      } catch {
+        fs.rmSync(file, { force: true });
+        return [];
+      }
+    })
+    .sort((a, b) => a.root.localeCompare(b.root));
+
+// Cloud lab pages saved with `labfb add`, so they're listed with the local ones.
+const LINKS = path.join(path.dirname(REGISTRY), 'links.json');
+const savedLinks = () => {
+  try {
+    return JSON.parse(fs.readFileSync(LINKS, 'utf8'));
+  } catch {
+    return [];
+  }
+};
+// A cloud page's open comments, from its plain-text agent view (`open: N`).
+const cloudOpen = async (url) => {
+  try {
+    const u = new URL(url);
+    const text = await (await fetch(`${u.origin}/_lab/agent${u.pathname}`, { signal: AbortSignal.timeout(3000) })).text();
+    return Number(text.match(/^open: (\d+)/m)?.[1] || 0);
+  } catch {
+    return 0;
+  }
+};
+
+if (pos[0] === 'add' || pos[0] === 'remove') {
+  const raw = pos[1] || die(`Give the page's address: ${CMD} ${pos[0]} https://<lab domain>/<page>`);
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {}
+  if (!url || !/^https?:$/.test(url.protocol)) die(`Not a page address: ${raw}`);
+  const key = url.origin + url.pathname.replace(/\/$/, '');
+  let list = savedLinks().filter((l) => l.url !== key);
+  let title = opts.name || '';
+  if (pos[0] === 'add') {
+    if (!title) {
+      try {
+        const html = await (await fetch(key, { signal: AbortSignal.timeout(5000) })).text();
+        title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1].trim() || '';
+      } catch {}
+    }
+    list.push({ url: key, title });
+  }
+  fs.mkdirSync(path.dirname(LINKS), { recursive: true });
+  fs.writeFileSync(LINKS, JSON.stringify(list, null, 2) + '\n');
+  console.log(pos[0] === 'add' ? `Saved ${key}${title ? ` (${title})` : ''}. It shows in \`${CMD} pages\` and \`${CMD} list\`.` : `Removed ${key}.`);
+  process.exit(0);
+}
+
+// `labfb list`: what runs, so an agent reuses a lab instead of starting another.
+if (pos[0] === 'list') {
+  const labs = runningLabs();
+  if (!labs.length) console.log('No labs running.');
+  for (const lab of labs) {
+    let pages = '';
+    try {
+      const info = await (await fetch(`http://localhost:${lab.port}/_lab/pages`, { signal: AbortSignal.timeout(2000) })).json();
+      const open = info.pages.reduce((n, p) => n + p.open, 0);
+      pages = ` · ${info.pages.length} page${info.pages.length === 1 ? '' : 's'}${open ? `, ${open} open comment${open === 1 ? '' : 's'}` : ''}${info.listening ? ` · ${info.listening} listening` : ''}`;
+    } catch {}
+    console.log(`${lab.name}  http://localhost:${lab.port}  ${lab.root}${lab.proxy ? ` (on ${lab.proxy})` : ''}${pages}`);
+  }
+  const links = savedLinks();
+  if (links.length) console.log(`\nSaved cloud pages:\n${links.map((l) => `${l.title || l.url}  ${l.url}`).join('\n')}`);
+  process.exit(0);
+}
+
 // ---------- every running lab's pages, as a Markdown list ----------
 // Written to .lab/lab-pages.md in this folder: a file Claude can send to the person, so the pages sit with its outputs.
 if (pos[0] === 'pages') {
-  const reg = path.join(process.env.LABFB_HOME || path.join(os.homedir(), '.labfb'), 'servers');
   const labs = [];
-  for (const name of fs.existsSync(reg) ? fs.readdirSync(reg).filter((n) => n.endsWith('.json')) : []) {
-    const file = path.join(reg, name);
-    let entry;
+  for (const lab of runningLabs()) {
     try {
-      entry = JSON.parse(fs.readFileSync(file, 'utf8'));
-      const res = await fetch(`http://localhost:${entry.port}/_lab/pages`, { signal: AbortSignal.timeout(2000) });
+      const res = await fetch(`http://localhost:${lab.port}/_lab/pages`, { signal: AbortSignal.timeout(2000) });
       if (res.ok) labs.push(await res.json());
-    } catch {
-      // A lab that stopped without cleaning up: drop its file.
-      try {
-        process.kill(entry.pid, 0);
-      } catch {
-        fs.rmSync(file, { force: true });
-      }
-    }
+    } catch {}
   }
   labs.sort((a, b) => a.name.localeCompare(b.name));
+  // Groups: each local lab, then saved cloud pages by domain. Names only when there's more than one group.
+  const groups = labs.map((lab) => ({ name: lab.name, pages: lab.pages }));
+  const byHost = new Map();
+  for (const link of savedLinks()) {
+    const host = new URL(link.url).host;
+    byHost.set(host, [...(byHost.get(host) || []), { url: link.url, title: link.title, path: new URL(link.url).pathname, open: await cloudOpen(link.url) }]);
+  }
+  for (const [host, pages] of byHost) groups.push({ name: host, pages });
   const lines = [];
-  for (const lab of labs) {
-    if (labs.length > 1) lines.push(`**${lab.name}**`, '');
-    for (const p of lab.pages) {
+  for (const group of groups) {
+    if (groups.length > 1) lines.push(`**${group.name}**`, '');
+    for (const p of group.pages) {
       const name = (p.title || p.file || p.path).replace(/[[\]]/g, '');
       lines.push(`- [${name}](${p.url})${p.open ? ` · ${p.open} open` : ''}`);
     }
@@ -144,7 +228,7 @@ if (pos[0] === 'pages') {
   }
   const out = path.resolve(opts.dir || '.', '.lab', 'lab-pages.md');
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, (lines.join('\n').trim() || 'No labs running.') + '\n');
+  fs.writeFileSync(out, (lines.join('\n').trim() || 'No labs running, and no saved cloud pages.') + '\n');
   console.log(out);
   process.exit(0);
 }
@@ -218,7 +302,7 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
 }
 
 // ---------- the server ----------
-const unknown = argv.find((a) => a.startsWith('--') && !['--help', '--version', '--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a));
+const unknown = argv.find((a) => a.startsWith('--') && !['--help', '--version', '--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--new', '--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a));
 if (unknown) die(`Unknown option ${unknown}. See: ${CMD} --help`);
 if (pos[0] && !fs.existsSync(pos[0])) die(`No folder ${pos[0]}. Run ${CMD} in your project, or name a folder (see --help)`);
 const ROOT = fs.realpathSync(path.resolve(pos[0] || '.'));
@@ -233,6 +317,21 @@ const alreadyRunning = (() => {
     return false;
   }
 })();
+
+// A folder that a running lab already serves (the lab's own folder or one inside it): use that lab, don't start another.
+// Two labs on one project split its comments, and each one is another server running.
+if (!alreadyRunning && !opts.new && !['wait', 'reply', 'resolve'].includes(pos[0])) {
+  const home = runningLabs().find((lab) => ROOT.startsWith(lab.root + path.sep));
+  if (home) {
+    const url = `http://localhost:${home.port}/${path.relative(home.root, ROOT).split(path.sep).map(encodeURIComponent).join('/')}/`;
+    console.log(`[lab] ${ROOT} is already served by the lab for ${home.root}: ${url}`);
+    console.log('[lab] Comment there. To run a separate lab for this folder anyway, add --new.');
+    if (!opts['no-open']) spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+    process.exit(0);
+  }
+  const inside = runningLabs().filter((lab) => lab.root.startsWith(ROOT + path.sep));
+  for (const lab of inside) console.log(`[lab] note: ${lab.root} has its own lab at http://localhost:${lab.port}; its comments stay there.`);
+}
 
 // Every server listening on this computer, with the folder it runs in (lsof: macOS and Linux).
 // Several projects' dev servers often run at once, so a port is only this project's if its folder is.
@@ -469,7 +568,6 @@ const setMode = (m) => {
 };
 let PORT = Number(opts.port || process.env.PORT || 4400);
 // Every running lab on this computer, for the Lab panel in Claude: one file per port, removed on exit.
-const REGISTRY = path.join(process.env.LABFB_HOME || path.join(os.homedir(), '.labfb'), 'servers');
 const registryFile = () => path.join(REGISTRY, `${PORT}.json`);
 const register = () => {
   try {
