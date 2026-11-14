@@ -106,10 +106,10 @@
       .zone { position: absolute; background: color-mix(in srgb, var(--_accent) 5%, transparent);
               border-radius: var(--_radius); pointer-events: none; }
       .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-      /* 1px dots, each on a soft halo of the card colour, so they show on dark and light pages alike. */
-      .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 5; rx: var(--_radius); ry: var(--_radius); }
-      .zone rect.halo { stroke: color-mix(in srgb, var(--_bg) 75%, transparent); stroke-width: 3; }
-      .zone rect.dots { stroke: var(--_fg); stroke-width: 1; }
+      .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 4; rx: var(--_radius); ry: var(--_radius); }
+      /* Light dots on a dark ring: the outline shows on black pages and white ones, whatever the system theme. */
+      .zone rect.ring { stroke: rgba(0,0,0,.5); stroke-width: 2.5; }
+      .zone rect.dots { stroke: #fff; stroke-width: 1; }
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
       .zone.saved { background: color-mix(in srgb, var(--_accent) 3%, transparent); }
       .zone.saved.in { animation: lab-settle .36s var(--_ease); }
@@ -142,11 +142,12 @@
       .card .box { background: var(--_soft); border-radius: max(calc(var(--_radius) - 2px), 0px); margin: 0; }
       .card .box.open { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 22%, transparent); }
       .card .box:focus-within { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--_fg) 28%, transparent); }
-      .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 10px 8px 8px 14px; }
+      /* Same top and right padding open or closed: the text and the arrow's column stay put while the box grows. */
+      .box.open { grid-template-areas: "text text" "line line" "who send"; row-gap: 8px; padding: 7px 7px 8px 14px; }
       .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 4px 0; margin: 0; resize: none;
                       min-height: 0; max-height: 200px; overflow-y: auto; outline: none; display: block; }
       .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
-      .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -8px 0 -14px; display: none; }
+      .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
       .who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; font-size: 13px; color: var(--_muted); letter-spacing: .005em; }
       .who * { font-size: 13px; }
       .who span { color: var(--_muted); }
@@ -492,7 +493,7 @@
   // The area's outline: round dots with room between them (CSS dotted borders can't space their dots).
   const zoneEl = (cls) => {
     const z = el('div', { class: `zone ${cls}` });
-    z.innerHTML = '<svg aria-hidden="true"><rect class="halo" width="100%" height="100%"/><rect class="dots" width="100%" height="100%"/></svg>';
+    z.innerHTML = '<svg aria-hidden="true"><rect class="ring" width="100%" height="100%"/><rect class="dots" width="100%" height="100%"/></svg>';
     return z;
   };
   const drawZone = (box, cls) => {
@@ -689,11 +690,22 @@
     wrap.append(box, error);
 
     const sync = () => {
-      box.classList.toggle('open', text.value.length > 0 || root.activeElement === name || !!error.textContent);
+      const open = text.value.length > 0 || root.activeElement === name || !!error.textContent;
+      // Opening moves the arrow from the text row to the name row: slide it there while the box grows, no jump.
+      const glide = open !== box.classList.contains('open') && box.isConnected && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const from = glide && { arrow: sendBtn.getBoundingClientRect(), height: box.getBoundingClientRect().height };
+      box.classList.toggle('open', open);
       as.hidden = !name.value.trim();
       sendBtn.classList.toggle('ready', Boolean(text.value.trim() && name.value.trim()));
       text.style.height = 'auto';
       text.style.height = `${text.scrollHeight}px`;
+      if (glide) {
+        const to = sendBtn.getBoundingClientRect();
+        const timing = { duration: 220, easing: 'cubic-bezier(.2, .7, .3, 1)' };
+        sendBtn.animate([{ transform: `translate(${from.arrow.left - to.left}px, ${from.arrow.top - to.top}px)` }, { transform: 'none' }], timing);
+        box.style.overflow = 'hidden';
+        box.animate([{ height: `${from.height}px` }, { height: `${box.getBoundingClientRect().height}px` }], timing).onfinish = () => (box.style.overflow = '');
+      }
     };
     let busy = false;
     const go = async () => {
