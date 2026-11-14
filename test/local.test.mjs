@@ -15,7 +15,7 @@ fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><
 
 const run = (args, opts = {}) =>
   new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: DIR, ...opts }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, out: stdout + stderr })));
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env: { ...process.env, PORT } });
+const server = spawn(process.execPath, [LAB, '.', '--no-open', '--no-fast', '--port', PORT], { cwd: DIR, env: { ...process.env, PORT } });
 after(() => {
   server.kill();
   fs.rmSync(DIR, { recursive: true, force: true });

@@ -25,8 +25,9 @@ Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
       --proxy <port> to pick one yourself. A folder of HTML files is served as it is at http://localhost:4400
       and reloads when files change. The folder is this one unless you name another.
       --wifi lets phones and laptops on the same wifi comment too (as guests). Use it at home only.
-      --fast: a quick model (claude -p, haiku) tries each new comment from this computer first. Small, clear
-      changes it makes and answers "Done: …" on the pin; anything else goes to the session as usual.
+      Quick model: when the claude command is installed, a quick model (claude -p, haiku) tries each new comment
+      from this computer first. Small, clear changes it makes and answers "Done: …" on the pin; anything else
+      goes to the session as usual. --no-fast turns it off.
   labfb preview [folder]
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
 
@@ -49,7 +50,7 @@ for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--help' || a === '-h') opts.help = true;
   else if (a === '--version' || a === '-v') opts.version = true;
-  else if (['--wifi', '--no-open', '--resolve', '--fast'].includes(a)) opts[a.slice(2)] = true;
+  else if (['--wifi', '--no-open', '--resolve', '--fast', '--no-fast'].includes(a)) opts[a.slice(2)] = true;
   else if (['--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a)) {
     // --proxy on its own means "find the dev server yourself".
     const v = argv[i + 1];
@@ -177,7 +178,7 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
 }
 
 // ---------- the server ----------
-const unknown = argv.find((a) => a.startsWith('--') && !['--help', '--version', '--wifi', '--no-open', '--resolve', '--fast', '--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a));
+const unknown = argv.find((a) => a.startsWith('--') && !['--help', '--version', '--wifi', '--no-open', '--resolve', '--fast', '--no-fast', '--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a));
 if (unknown) die(`Unknown option ${unknown}. See: ${CMD} --help`);
 if (pos[0] && !fs.existsSync(pos[0])) die(`No folder ${pos[0]}. Run ${CMD} in your project, or name a folder (see --help)`);
 const ROOT = fs.realpathSync(path.resolve(pos[0] || '.'));
@@ -521,11 +522,22 @@ async function wake() {
   deliver(w.res, got);
 }
 
-// ---------- fast path (--fast) ----------
+// ---------- fast path (on when the claude command is installed; --no-fast turns it off) ----------
 // Like a page answering "Send to Claude" itself: a quick, cheap model tries small changes first and answers on the pin.
 // Only comments from this computer: a wifi guest's words never drive edits without the session reading them.
 // LAB_FAST_CMD replaces the model command (a shell command; the prompt comes on stdin, the answer's last line is read).
-const FAST = Boolean(opts.fast);
+const onPath = (name) =>
+  (process.env.PATH || '').split(path.delimiter).some((dir) =>
+    (process.platform === 'win32' ? ['.cmd', '.exe', ''] : ['']).some((ext) => {
+      try {
+        fs.accessSync(path.join(dir, name + ext), fs.constants.X_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    }),
+  );
+const FAST = !opts['no-fast'] && Boolean(opts.fast || process.env.LAB_FAST_CMD || onPath('claude'));
 let quickQueue = Promise.resolve();
 const trying = new Set(); // comment ids the quick model has or will get (memory only: a restart forgets them)
 let quickRunning = false;
@@ -821,6 +833,8 @@ server.on('listening', async () => {
   console.log(WIFI ? `[lab] other devices on this wifi: http://${hostName}.local:${PORT} or ${wifiAddrs().map((a) => `http://${a}:${PORT}`).join(', ')}`
     : '[lab] only this computer can open it (--wifi lets phones on the same wifi in)');
   console.log(`[lab] Claude: run \`${CMD} wait\` in the background from ${ROOT}; it ends with the next comment.`);
+  console.log(FAST ? '[lab] quick model on: small changes from this computer are tried first (--no-fast turns it off)'
+    : '[lab] quick model off (it needs the claude command)');
   if (!opts['no-open']) spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [origin + '/'], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
 });
 const bye = () => {

@@ -12,7 +12,7 @@ const LAB = fileURLToPath(new URL('../local.mjs', import.meta.url));
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-close-'));
 const PORT = String(4600 + Math.floor(Math.random() * 300) + 300);
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><h1>Hi</h1>');
-const server = spawn(process.execPath, [LAB, '.', '--no-open', '--port', PORT], { cwd: DIR, env: { ...process.env, LAB_CLOSE_GRACE: '1' } });
+const server = spawn(process.execPath, [LAB, '.', '--no-open', '--no-fast', '--port', PORT], { cwd: DIR, env: { ...process.env, LAB_CLOSE_GRACE: '1' } });
 after(() => {
   server.kill();
   fs.rmSync(DIR, { recursive: true, force: true });

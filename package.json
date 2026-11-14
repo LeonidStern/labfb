@@ -1,6 +1,6 @@
 {
   "name": "@leonidstern/labfb",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Pin comments on pages, read by your agent as plain text. Local mode: comment on pages on your computer and Claude answers on the pins.",
   "type": "module",
   "bin": {
