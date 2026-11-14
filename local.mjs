@@ -349,15 +349,26 @@ if (!PROXY) fs.watch(ROOT, { recursive: true }, (_, file) => {
 // Comments people made that Claude hasn't been given yet, whole threads, as the agent text shows them.
 let seen = fs.existsSync(SEEN) ? fs.readFileSync(SEEN, 'utf8').trim() : '';
 let waiter = null;
-// When no page has been open for a while (tabs closed), the open wait ends, so closed pages don't keep a session
-// listening. A page reload or a click to another page reconnects within a second, well inside this grace.
+// When every page is closed for a while, the open wait ends, so closed pages don't keep a session listening.
+// Each tab has an id. A tab in the background drops its stream but still counts as open; it leaves when it says bye
+// on pagehide (closed, or navigated away), or after half an hour with no stream if it never could.
+// A reload says bye and reconnects within a second, well inside the grace.
 const CLOSE_GRACE = Number(process.env.LAB_CLOSE_GRACE || 120) * 1000;
-let closedTimer;
+const tabs = new Map(); // id -> { streams, seen }
+const openTabs = () => {
+  for (const [id, t] of tabs) if (!t.streams && Date.now() - t.seen > 1800000) tabs.delete(id);
+  return tabs.size;
+};
+let closedTimer = null;
 const pagesChanged = () => {
-  clearTimeout(closedTimer);
-  if (clients.size || !waiter) return;
-  closedTimer = setTimeout(() => {
-    if (clients.size || !waiter) return;
+  if (openTabs() || !waiter) {
+    clearTimeout(closedTimer);
+    closedTimer = null;
+    return;
+  }
+  closedTimer ??= setTimeout(() => {
+    closedTimer = null;
+    if (openTabs() || !waiter) return;
     const w = waiter;
     waiter = null;
     clearTimeout(w.timer);
@@ -365,6 +376,7 @@ const pagesChanged = () => {
     setMode('away');
   }, CLOSE_GRACE);
 };
+setInterval(pagesChanged, 60000).unref();
 // The agent text of some threads on a page: its page/file lines, then each thread in full.
 async function threadsText(page, threads) {
   const text = await agentText(page);
@@ -527,12 +539,25 @@ const handler = async (req, res) => {
       const client = { res, local: isLoopback(req) };
       res.write(`data: ${state(client.local)}\n\n`);
       clients.add(client);
+      const id = String(url.searchParams.get('tab') || '').slice(0, 40) || randomBytes(8).toString('hex');
+      const tab = tabs.get(id) || { streams: 0, seen: 0, anonymous: !url.searchParams.get('tab') };
+      tab.streams++;
+      tabs.set(id, tab);
       pagesChanged();
       req.on('close', () => {
         clients.delete(client);
+        tab.streams--;
+        tab.seen = Date.now();
+        if (tab.anonymous) tabs.delete(id); // a stream without a tab id is the whole page
         pagesChanged();
       });
       return;
+    }
+    if (pathname === '/_lab/bye') {
+      const { tab } = JSON.parse((await new Response(req).text()) || '{}');
+      if (!tabs.get(tab)?.streams) tabs.delete(tab);
+      pagesChanged();
+      return res.writeHead(204).end();
     }
     if (pathname === '/_lab/wait') {
       if (!isAgent(req)) return res.writeHead(403).end('forbidden');

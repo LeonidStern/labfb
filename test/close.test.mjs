@@ -24,9 +24,9 @@ const wait = () =>
     execFile(process.execPath, [LAB, 'wait', '--timeout', '20'], { cwd: DIR }, (err, stdout) => resolve({ out: stdout, ms: Date.now() - t0 }));
   });
 // A page is open while it holds the live stream.
-const openPage = () =>
+const openPage = (tab) =>
   new Promise((resolve) => {
-    const req = http.get({ host: '127.0.0.1', port: PORT, path: '/_lab/live', headers: { host: `localhost:${PORT}` } }, (res) => resolve(() => res.destroy()));
+    const req = http.get({ host: '127.0.0.1', port: PORT, path: '/_lab/live' + (tab ? `?tab=${tab}` : ''), headers: { host: `localhost:${PORT}` } }, (res) => resolve(() => res.destroy()));
     req.on('error', () => {});
   });
 
@@ -68,4 +68,20 @@ test('a reload (close then reopen within the grace) keeps listening', async () =
   assert.equal(done, false, 'still listening after a reload');
   close();
   await pending;
+});
+
+test('a tab in the background still counts as open; its bye on close ends the wait', async () => {
+  const hide = await openPage('t1');
+  const pending = wait();
+  await sleep(200);
+  hide(); // the widget drops its stream while the tab is hidden
+  let done = false;
+  pending.then(() => (done = true));
+  await sleep(2500);
+  assert.equal(done, false, 'still listening while the tab is in the background');
+  const B = `http://localhost:${PORT}`;
+  const r = await fetch(B + '/_lab/bye', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ tab: 't1' }) });
+  assert.equal(r.status, 204);
+  const { out } = await pending;
+  assert.match(out, /page was closed/);
 });
