@@ -1044,6 +1044,12 @@
     render();
   };
   toggleBtn.addEventListener('click', () => setOn(!on));
+  // Option-click (or Option-drag) with comments hidden still pins: comments come back with the new one.
+  const showAgain = () => {
+    if (on) return;
+    on = true;
+    store.set('lab-on', '1');
+  };
   copyBtn.addEventListener('click', () => copy(agentLink(), copyBtn));
   const typing = (e) =>
     e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)));
@@ -1086,7 +1092,7 @@
   document.addEventListener(
     'pointerdown',
     (e) => {
-      if (!on || draft || openId || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if ((!on && !e.altKey) || draft || openId || e.button !== 0 || e.pointerType === 'touch' || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (e.composedPath().includes(host)) return;
       if (!e.altKey && e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
       if (e.target instanceof Element && e.target.closest(OFF)) return;
@@ -1128,6 +1134,7 @@
     setTimeout(() => (afterDrag = false), 0);
     getSelection?.()?.removeAllRanges();
     if (Math.abs(d.x1 - d.x0) < 12 || Math.abs(d.y1 - d.y0) < 12) return;
+    showAgain();
     draft = { anchor: zoneAnchor(d) };
     render();
   };
@@ -1155,11 +1162,12 @@
       render();
       return;
     }
-    if (!on || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if ((!on && !e.altKey) || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
     if (e.altKey) e.preventDefault();
     else if (e.defaultPrevented || (e.target instanceof Element && e.target.closest(INTERACTIVE))) return;
     if (e.target instanceof Element && e.target.closest(OFF)) return;
     if (String(getSelection?.() || '').trim()) return;
+    showAgain();
     draft = { anchor: anchorAt(e.clientX, e.clientY) };
     render();
   });
@@ -1226,7 +1234,7 @@
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   fonts.textContent += `html.lab-pinning body, html.lab-pinning body *:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [data-lab-comments]) { cursor: ${PIN_CURSOR}; }`;
   // Holding Option (Alt) shows the pin cursor on links and controls too, since Option-click pins there.
-  fonts.textContent += `html.lab-pinning.lab-alt body, html.lab-pinning.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: ${PIN_CURSOR} !important; }`;
+  fonts.textContent += `html.lab-alt body, html.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: ${PIN_CURSOR} !important; }`;
   const setAlt = (down) => document.documentElement.classList.toggle('lab-alt', Boolean(down));
   addEventListener('keydown', (e) => e.key === 'Alt' && setAlt(true), true);
   addEventListener('keyup', (e) => e.key === 'Alt' && setAlt(false), true);
