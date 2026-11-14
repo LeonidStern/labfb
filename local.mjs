@@ -164,6 +164,9 @@ if (['wait', 'reply', 'resolve'].includes(pos[0])) {
 }
 
 // ---------- the server ----------
+if (pos[0] && !fs.existsSync(pos[0])) die(`No folder ${pos[0]}. Usage: node ${ME} <folder> (see --help)`);
+const unknown = argv.find((a) => a.startsWith('--') && !['--help', '--wifi', '--no-open', '--resolve', '--fast', '--port', '--name', '--page', '--timeout', '--dir', '--proxy'].includes(a));
+if (unknown) die(`Unknown option ${unknown}. See: node ${ME} --help`);
 const ROOT = fs.realpathSync(path.resolve(pos[0] || '.'));
 const LAB = path.join(ROOT, '.lab');
 const DATA = path.join(LAB, 'comments.json');
@@ -311,7 +314,7 @@ let awayTimer;
 const setMode = (m) => {
   mode = m;
   clearTimeout(awayTimer);
-  if (m === 'working') awayTimer = setTimeout(() => setMode('away'), 120000);
+  if (m === 'working') awayTimer = setTimeout(() => setMode('away'), 600000); // ten minutes without a sign of Claude
   saveServer();
   broadcast();
 };
@@ -552,6 +555,11 @@ const handler = async (req, res) => {
           const [key, h] = [...db].find(([k, m]) => k.startsWith('lab:comments:') && m.has(comment.id));
           const stored = { ...JSON.parse(h.get(comment.id)), ...(agent ? { session: sessionFrom(req) } : { from: isLoopback(req) ? 'this computer' : 'wifi guest' }) };
           h.set(comment.id, JSON.stringify(stored));
+          // A person answering a resolved thread ("still wrong") reopens it, here too, where the browser is admin.
+          if (!agent && stored.parent && h.has(stored.parent)) {
+            const root = JSON.parse(h.get(stored.parent));
+            if (root.resolved) h.set(stored.parent, JSON.stringify({ ...root, resolved: false, resolvedBy: undefined }));
+          }
           if (!agent) announce(key.slice('lab:comments:'.length), stored);
           if (FAST && !agent && !stored.parent && stored.from === 'this computer') quick(key.slice('lab:comments:'.length), stored);
         }

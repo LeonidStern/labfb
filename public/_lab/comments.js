@@ -106,8 +106,10 @@
       .zone { position: absolute; background: color-mix(in srgb, var(--_accent) 5%, transparent);
               border-radius: var(--_radius); pointer-events: none; }
       .zone svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-      .zone rect { fill: none; stroke: color-mix(in srgb, var(--_accent) 60%, transparent); stroke-width: 2; stroke-linecap: round;
-                   stroke-dasharray: 0 9; rx: var(--_radius); ry: var(--_radius); }
+      /* 1px dots, each on a soft halo of the card colour, so they show on dark and light pages alike. */
+      .zone rect { fill: none; stroke-linecap: round; stroke-dasharray: 0 5; rx: var(--_radius); ry: var(--_radius); }
+      .zone rect.halo { stroke: color-mix(in srgb, var(--_bg) 75%, transparent); stroke-width: 3; }
+      .zone rect.dots { stroke: var(--_fg); stroke-width: 1; }
       .zone.live { left: 0; top: 0; will-change: transform, width, height; animation: lab-fade .12s ease-out; }
       .zone.saved { background: color-mix(in srgb, var(--_accent) 3%, transparent); }
       .zone.saved.in { animation: lab-settle .36s var(--_ease); }
@@ -490,7 +492,7 @@
   // The area's outline: round dots with room between them (CSS dotted borders can't space their dots).
   const zoneEl = (cls) => {
     const z = el('div', { class: `zone ${cls}` });
-    z.innerHTML = '<svg aria-hidden="true"><rect width="100%" height="100%"/></svg>';
+    z.innerHTML = '<svg aria-hidden="true"><rect class="halo" width="100%" height="100%"/><rect class="dots" width="100%" height="100%"/></svg>';
     return z;
   };
   const drawZone = (box, cls) => {
@@ -593,7 +595,9 @@
     } catch {
       // Keep what is already on screen when a refresh fails.
     }
-    if (!typed() && !grabbing) render(); // someone is typing: the new comments show on the next render, the text stays
+    if (!typed() && !grabbing) render();
+    // Someone is in a box: the open thread gets its new replies in place; everything else shows on the next render.
+    else if (openCard?.isConnected) openCard.sync();
   }
 
   async function send(payload) {
@@ -813,7 +817,9 @@
       layer.append(pin);
       if (openId === c.id) {
         // Area comments open below the area, so the card doesn't hide what it is about.
-        const card = threadCard(c, new Set(news.map((x) => x.id)));
+        // Opened by a click: the reply box takes focus (not on touch screens, where it would pop the keyboard).
+        const card = threadCard(c, new Set(news.map((x) => x.id)), appear && !coarse);
+        openCard = card;
         if (appear) card.classList.add('in');
         placeCard(card, zone ? left + 14 : left, zone ? zone.top + zone.height : top);
         markSeen(news);
@@ -913,20 +919,36 @@
     });
   }
 
-  function threadCard(c, fresh = new Set()) {
+  // The open thread's card. New replies (Claude's too) are added to it in place, so the reply box keeps focus.
+  let openCard = null;
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  function threadCard(c, fresh = new Set(), focus = false) {
     const card = el('div', { class: 'card' });
     card.addEventListener('click', (e) => e.stopPropagation());
-    const itemEl = (item) => {
+    const itemEl = (item, isNew = fresh.has(item.id)) => {
       const box = el('div', { class: 'item' });
       const meta = el('div', { class: 'meta' });
       meta.append(el('b', {}, item.name), el('span', { class: 'ago', title: when(item.createdAt) }, ago(item.createdAt)));
-      if (fresh.has(item.id)) meta.append(el('span', { class: 'dot', title: 'new' }));
+      if (isNew) meta.append(el('span', { class: 'dot', title: 'new' }));
       // The number the agent text uses for this thread.
       if (item === c && !c.resolved) meta.append(el('span', { class: 'num', title: 'comment number, as in the agent link' }, String(numberOf(c))));
       box.append(meta, el('div', { class: 'text' }, item.text));
       return box;
     };
-    for (const item of [c, ...repliesOf(c.id)]) card.append(itemEl(item));
+    const shown = new Set();
+    for (const item of [c, ...repliesOf(c.id)]) {
+      card.append(itemEl(item));
+      shown.add(item.id);
+    }
+    card.sync = () => {
+      for (const r of repliesOf(c.id)) {
+        if (shown.has(r.id)) continue;
+        const items = card.querySelectorAll('.item');
+        items[items.length - 1].after(itemEl(r, true));
+        shown.add(r.id);
+        markSeen([r]);
+      }
+    };
     if (isAdmin) {
       const actions = el('div', { class: 'row' });
       const resolve = el('button', { class: 'btn', type: 'button' }, c.resolved ? 'reopen' : 'resolve');
@@ -958,13 +980,16 @@
     card.append(
       composer({
         placeholder: 'reply',
+        autofocus: focus,
         onSubmit: async (name, text) => {
           const { comment } = await send({ name, text, parent: c.id });
           comments.push(comment);
           markSeen([comment]);
           // Add the reply where it belongs instead of redrawing the card, so nothing on screen blinks
           // and the reply box keeps its focus for the next one.
-          card.querySelectorAll('.item')[repliesOf(c.id).length - 1].after(itemEl(comment));
+          shown.add(comment.id);
+          const items = card.querySelectorAll('.item');
+          items[items.length - 1].after(itemEl(comment, false));
           return { keep: true };
         },
       }),
@@ -1199,7 +1224,8 @@
         addEventListener('load', () => scrollTo(0, +(kept.y ?? kept)));
       }
     } catch {}
-    const busy = () => draft || root.activeElement;
+    // Hold a reload while a comment is being started or text is typed; a focused, empty reply box doesn't count.
+    const busy = () => draft || [...root.querySelectorAll('textarea')].some((t) => t.value.trim());
     const reload = () => {
       if (busy()) return setTimeout(reload, 500);
       try {
@@ -1219,9 +1245,8 @@
       stream.onmessage = (e) => {
         const v = JSON.parse(e.data);
         if (String(v.files) !== script.dataset.version) return reload();
-        const fresh = seen !== null && v.comments !== seen;
-        if (!fresh || !busy()) seen = v.comments;
-        if (fresh && !busy()) load();
+        if (seen !== null && v.comments !== seen) load(); // load() keeps typed text: it adds replies in place
+        seen = v.comments;
         // listening: a wait is open · working: Claude got comments and is on them · away: nobody will hear a comment now.
         const s = v.session;
         const mode = s ? v.mode || 'listening' : 'away';
