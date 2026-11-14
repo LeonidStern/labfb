@@ -34,7 +34,7 @@ const seed = async (page, text) => { const k = seedN++ % 2; return (await api({ 
   // 1. Owner makes the links.
   const inv = async (name, page, scope) => (await api({ page, action: 'invite', name, ...(scope ? { scope } : {}) }, 'admintoken')).data;
   const A = await inv('anna', PAGES.anna), M = await inv('mira', PAGES.mira), LS = await inv('leo', PAGES.leo, '*');
-  check('owner gets anna a key for /anna', A.scope === 'anna' && A.link.includes('/anna/home.html?lab-admin='), A.key);
+  check('owner gets anna a key for /anna', A.scope === 'anna' && A.link.includes('/anna/home.html#lab-admin='), A.key);
   check('owner gets mira a key for /mira', M.scope === 'mira', M.key);
   check('owner gets leo a key for every lab', LS.scope === '*', LS.key);
   check('only the owner can make links', (await api({ page: PAGES.anna, action: 'invite', name: 'eve' }, A.key)).status === 403);

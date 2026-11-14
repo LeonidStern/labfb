@@ -36,12 +36,14 @@
   // Admin keys are kept per lab (name.scope.sig), so one browser can hold links for /anna and /mira at once.
   // The owner token has no scope and works everywhere.
   const scopeOf = (key) => (key.split('.').length === 3 ? key.split('.')[1] : '');
-  const adminParam = new URLSearchParams(location.search).get('lab-admin');
+  // Admin links carry the key after # (never sent to the server, so it stays out of the member site's logs); ?lab-admin= still works.
+  const adminParam = new URLSearchParams(location.hash.slice(1)).get('lab-admin') || new URLSearchParams(location.search).get('lab-admin');
   if (adminParam) {
     const scope = scopeOf(adminParam);
     store.set(scope ? `lab-admin:${scope}` : 'lab-admin', adminParam);
     const url = new URL(location.href);
     url.searchParams.delete('lab-admin');
+    if (/lab-admin=/.test(url.hash)) url.hash = '';
     history.replaceState(null, '', url);
   }
   const adminToken = script?.dataset.admin || store.get(`lab-admin:${page.split('/')[1] || ''}`) || store.get('lab-admin:*') || store.get('lab-admin');
