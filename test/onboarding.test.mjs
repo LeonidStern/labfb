@@ -116,3 +116,66 @@ test('a running lab is listed for the Lab panel: a registry file while it runs, 
   fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(home, { recursive: true, force: true });
 });
+
+test('a folder that a running lab already serves opens that lab instead of starting another', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-nest-')));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-'));
+  fs.mkdirSync(path.join(dir, 'sub'));
+  fs.writeFileSync(path.join(dir, 'index.html'), '<title>Top</title>');
+  fs.writeFileSync(path.join(dir, 'sub', 'index.html'), '<title>Sub</title>');
+  const env = { ...process.env, LABFB_HOME: home };
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', String(5300 + Math.floor(Math.random() * 200))], { cwd: dir, env });
+  kids.push(lab);
+  // The lab moves up a port when its first pick is busy: read the one it took from its registry file.
+  const reg = path.join(home, 'servers');
+  for (let i = 0; i < 50 && !(fs.existsSync(reg) && fs.readdirSync(reg).length); i++) await new Promise((r) => setTimeout(r, 100));
+  const port = String(JSON.parse(fs.readFileSync(path.join(reg, fs.readdirSync(reg)[0]), 'utf8')).port);
+  const run2 = (args, cwd) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd, env }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, out: stdout + stderr })));
+  const nested = await run2(['--no-open'], path.join(dir, 'sub'));
+  assert.equal(nested.code, 0);
+  assert.match(nested.out, new RegExp(`already served by the lab for .*: http://localhost:${port}/sub/`));
+  assert.ok(!fs.existsSync(path.join(dir, 'sub', '.lab')), 'no second lab started');
+  const list = await run2(['list'], dir);
+  assert.match(list.out, new RegExp(`http://localhost:${port}  ${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} · 2 pages`));
+  lab.kill();
+  await new Promise((r) => lab.on('exit', r));
+  assert.match((await run2(['list'], dir)).out, /No labs running/);
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
+test('saved cloud pages are listed with the local ones', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-cloud-')));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-'));
+  const env = { ...process.env, LABFB_HOME: home };
+  const run2 = (args) => new Promise((resolve) => execFile(process.execPath, [LAB, ...args], { cwd: dir, env }, (err, stdout, stderr) => resolve({ code: err?.code ?? 0, out: stdout + stderr })));
+  assert.match((await run2(['add', 'https://lab.example.invalid/anna/site/abc/home/', '--name', 'Anna home'])).out, /Saved https:\/\/lab\.example\.invalid\/anna\/site\/abc\/home/);
+  await run2(['pages']);
+  assert.equal(fs.readFileSync(path.join(dir, '.lab', 'lab-pages.md'), 'utf8'), '- [Anna home](https://lab.example.invalid/anna/site/abc/home)\n');
+  await run2(['remove', 'https://lab.example.invalid/anna/site/abc/home']);
+  await run2(['pages']);
+  assert.match(fs.readFileSync(path.join(dir, '.lab', 'lab-pages.md'), 'utf8'), /No labs for this folder/);
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
+test('pages lists this folder\'s labs only, unless --all', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'labfb-home-'));
+  const env = { ...process.env, LABFB_HOME: home };
+  const mk = (name) => {
+    const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `labfb-${name}-`)));
+    fs.writeFileSync(path.join(d, 'index.html'), `<title>${name}</title>`);
+    return d;
+  };
+  const [a, b] = [mk('alpha'), mk('beta')];
+  for (const [d, p] of [[a, 5600], [b, 5650]]) kids.push(spawn(process.execPath, [LAB, '--no-open', '--port', String(p + Math.floor(Math.random() * 40))], { cwd: d, env }));
+  const reg = path.join(home, 'servers');
+  for (let i = 0; i < 50 && !(fs.existsSync(reg) && fs.readdirSync(reg).length === 2); i++) await new Promise((r) => setTimeout(r, 100));
+  const pagesIn = (cwd, extra = []) => new Promise((resolve) => execFile(process.execPath, [LAB, 'pages', ...extra], { cwd, env }, (err, stdout) => resolve(fs.readFileSync(stdout.trim(), 'utf8'))));
+  const mine = await pagesIn(a);
+  assert.match(mine, /\[alpha\]/);
+  assert.doesNotMatch(mine, /beta/);
+  const all = await pagesIn(a, ['--all']);
+  assert.match(all, /\*\*labfb-alpha-.*\[alpha\][\s\S]*\*\*labfb-beta-.*\[beta\]/s);
+  for (const d of [a, b]) fs.rmSync(d, { recursive: true, force: true });
+});
