@@ -72,7 +72,9 @@ function adminFor(request, path) {
 
 const isAdmin = (request, path) => Boolean(adminFor(request, path));
 
-const clean = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
+// One line: names and anchor fields can't break into the agent text as a fake heading or field.
+const clean = (value, max) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '');
+const cleanText = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
 const num = (value) => (Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : 0);
 
 const int = (v, max = 100000) => (Number.isFinite(v) ? Math.min(Math.max(Math.round(v), 0), max) : undefined);
@@ -92,6 +94,7 @@ function cleanAnchor(a) {
     dpr: Number.isFinite(a.dpr) ? Math.min(Math.max(a.dpr, 0.5), 8) : undefined,
     kind: KINDS.includes(a.kind) ? a.kind : undefined,
     element: clean(a.element, 200) || undefined,
+    text: clean(a.text, 80) || undefined,
     inside: clean(a.inside, 100) || undefined,
     section: clean(a.section, 100) || undefined,
     build: clean(a.build, 40) || undefined,
@@ -190,6 +193,7 @@ function asText(path, comments, host) {
   open.forEach((c, i) => {
     const a = c.anchor || {};
     lines.push('', `## ${i + 1}. ${c.name} · ${stamp(c.createdAt)} · id ${c.id}`, `comment: ${body(c.text)}`);
+    if (c.from) lines.push(`from: ${c.from}`);
     if (a.kind === 'image' || a.kind === 'video' || a.kind === 'background') {
       lines.push(`on: ${a.kind}${a.file ? ` "${a.file}" (search the repo's src/ and public/ for it)` : ''}`);
       if (a.src) lines.push(`src: ${a.src}`);
@@ -218,6 +222,7 @@ function asText(path, comments, host) {
       for (const part of a.context.split(' · ').filter(Boolean)) lines.push(part.startsWith('section:') ? part : `on: ${part}`);
     }
     if (a.element) lines.push(`element: ${a.element}`);
+    if (a.text && !a.quote) lines.push(`element text: "${a.text}"`);
     if (a.inside) lines.push(`inside: ${a.inside}`);
     if (a.section) lines.push(`section: "${a.section}"`);
     if (a.zw) {
@@ -228,7 +233,7 @@ function asText(path, comments, host) {
     if (a.width) lines.push(`viewport: ${a.width}${a.height ? `×${a.height}` : 'px wide'}${a.dpr ? ` @${a.dpr}x` : ''}`);
     if (a.build) lines.push(`build: ${a.build}`);
     lines.push(`selector (at comment time): ${a.selector || 'body'}`);
-    for (const r of comments.filter((r) => r.parent === c.id)) lines.push(`reply: ${r.name} · ${stamp(r.createdAt)}: ${body(r.text)}`);
+    for (const r of comments.filter((r) => r.parent === c.id)) lines.push(`reply: ${r.name}${r.from && r.from !== c.from ? ` (${r.from})` : ''} · ${stamp(r.createdAt)} · id ${r.id}: ${body(r.text)}`);
   });
   return lines.join('\n') + '\n';
 }
@@ -276,7 +281,7 @@ export async function POST(request) {
   }
 
   const name = clean(body.name, MAX.name);
-  const text = clean(body.text, MAX.text);
+  const text = cleanText(body.text, MAX.text);
   if (!name || !text) return json({ error: 'name and text are required' }, 400);
 
   const count = await run('HLEN', key);

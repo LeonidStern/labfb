@@ -39,6 +39,7 @@ Set up labfb (https://github.com/leonidstern/labfb) for me on Vercel.
 - **Read:** `https://<lab domain>/_lab/agent/<page path>` returns every open comment as plain text.
 - **Resolve or delete:** open any page once with `?lab-admin=<token>`.
 - **Admins:** ask your agent "make a lab admin link for anna on /anna". With your token it gets a link that lets anna resolve and delete comments on `/anna` pages only. One browser can hold links for several labs. Nothing to set up per person (how: top of `api/lab-comments.mjs`).
+- **Local:** `node local.mjs <folder>` puts comments on pages on your computer, no deploy. Claude runs `node local.mjs wait`, which ends with your next comment, fixes the file (the page reloads) and answers on the pin. `--wifi` lets a phone at home join. `node local.mjs --help`.
 - **Theme:** set `--lab-accent`, `--lab-bg`, `--lab-fg`, `--lab-radius` or `--lab-font` on `[data-lab-comments]`.
 
 Tested with Claude: on a page with a photo, code and a video, Fable, Sonnet and Haiku found every spot from the link alone (file, pixel, line, second), see [bench](bench/). Admin links and deleting are tested across three labs in [bench/labs](bench/labs/). The script is 16 KB gzipped and loads after the page. Links are hidden, not locked, so don't put anything confidential there.

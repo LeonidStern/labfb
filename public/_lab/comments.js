@@ -17,7 +17,7 @@
   window.__labComments = true;
 
   const API = script?.dataset.api || '/_lab/api/comments';
-  const page = location.pathname.replace(/\/+$/, '') || '/';
+  const page = script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
   const store = {
     get: (k) => {
       try {
@@ -44,12 +44,12 @@
     url.searchParams.delete('lab-admin');
     history.replaceState(null, '', url);
   }
-  const adminToken = store.get(`lab-admin:${page.split('/')[1] || ''}`) || store.get('lab-admin:*') || store.get('lab-admin');
+  const adminToken = script?.dataset.admin || store.get(`lab-admin:${page.split('/')[1] || ''}`) || store.get('lab-admin:*') || store.get('lab-admin');
 
   let comments = [];
   let isAdmin = false;
   // Off by default: the page looks clean until someone turns comments on (button or c); remembered per browser.
-  let on = store.get('lab-on') === '1';
+  let on = store.get('lab-on') ? store.get('lab-on') === '1' : script?.dataset.on === '1';
   let openId = null;
   let draft = null; // { anchor, docX, docY }
 
@@ -164,6 +164,10 @@
       .bar button * { color: inherit; font-weight: inherit; }
       .bar .toggle:not(.secondary)::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); }
       .bar button.secondary { color: var(--_muted); }
+      .listener { position: fixed; left: 16px; bottom: 16px; display: inline-flex; gap: 6px; align-items: center; padding: 9px 14px; border-radius: 999px;
+             background: var(--_bg); color: var(--_fg); box-shadow: var(--_shadow); font-size: 13px; text-decoration: none; white-space: nowrap; }
+      .listener::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--_accent); margin-right: 2px; }
+      .listener span { color: var(--_muted); }
       kbd { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 4px; border-radius: 4px; text-align: center;
             background: var(--_soft); color: var(--_muted) !important; }
       .hint { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); background: var(--_bg); color: var(--_muted);
@@ -346,6 +350,8 @@
       dpr: Math.round((devicePixelRatio || 1) * 100) / 100,
       element: openingTag(target),
     };
+    const own = short(target.textContent, 200);
+    if (own && target !== document.body && (target.textContent || '').length < 400) anchor.text = short(own, 80);
     const inside = target.parentElement?.closest('[id], [data-lab]');
     if (inside) anchor.inside = inside.dataset.lab ? `[data-lab="${inside.dataset.lab}"]` : `#${inside.id}`;
     let heading = null;
@@ -886,7 +892,7 @@
   };
   const setOn = (value) => {
     on = value;
-    store.set('lab-on', on ? '1' : '');
+    store.set('lab-on', on ? '1' : '0');
     if (on) showHint();
     draft = null;
     openId = null;
@@ -1018,10 +1024,6 @@
   };
   addEventListener('resize', reflow);
   // Pick up comments others left while this tab was in the background.
-  // Local mode (local.mjs) fires this when someone else, like an agent, changes the comments.
-  window.addEventListener('lab:refresh', () => {
-    if (!draft && !root.activeElement) load();
-  });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && !draft && !root.activeElement) load();
   });
@@ -1060,4 +1062,57 @@
   };
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
+
+  // Local mode (local.mjs sets data-live): one event stream while the tab is visible, so many tabs don't use up
+  // the browser's connections. The page reloads when its files change, keeping the scroll position, and the
+  // comments refresh when someone else, like an agent, changes them. A label says which Claude session listens.
+  if (script?.dataset.live) {
+    const key = 'lab-scroll:' + location.pathname;
+    try {
+      const y = sessionStorage.getItem(key);
+      if (y !== null) {
+        sessionStorage.removeItem(key);
+        addEventListener('load', () => scrollTo(0, +y));
+      }
+    } catch {}
+    const busy = () => draft || root.activeElement;
+    const reload = () => {
+      if (busy()) return setTimeout(reload, 500);
+      try {
+        sessionStorage.setItem(key, String(scrollY));
+      } catch {}
+      location.reload();
+    };
+    const who = document.createElement('a');
+    who.className = 'listener';
+    who.hidden = true;
+    root.append(who);
+    let stream = null;
+    let seen = null;
+    const connect = () => {
+      if (stream || document.hidden) return;
+      stream = new EventSource(script.dataset.live);
+      stream.onmessage = (e) => {
+        const v = JSON.parse(e.data);
+        if (String(v.files) !== script.dataset.version) return reload();
+        if (seen !== null && v.comments !== seen) {
+          if (busy()) return;
+          load();
+        }
+        seen = v.comments;
+        const s = v.session;
+        who.replaceChildren(Object.assign(document.createElement('span'), { textContent: 'talking to' }), s ? s.name : 'no Claude session');
+        if (s?.url) Object.assign(who, { href: s.url, target: '_blank' });
+        else who.removeAttribute('href');
+        who.title = s?.resume || (s ? '' : 'Claude: node local.mjs wait');
+        who.hidden = false;
+      };
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) return connect();
+      stream?.close();
+      stream = null;
+    });
+    connect();
+  }
 })();
