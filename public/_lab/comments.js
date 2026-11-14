@@ -1018,6 +1018,10 @@
   };
   addEventListener('resize', reflow);
   // Pick up comments others left while this tab was in the background.
+  // Local mode (local.mjs) fires this when someone else, like an agent, changes the comments.
+  window.addEventListener('lab:refresh', () => {
+    if (!draft && !root.activeElement) load();
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && !draft && !root.activeElement) load();
   });
