@@ -2,6 +2,7 @@
 // labfb local: pin comments on a folder of local pages, for you and your agent, with no deploy.
 //
 //   node local.mjs [folder] [--port 4400]      serve the folder at http://localhost:4400 with comments on every page
+//                  [--wifi]                    also let phones and laptops on the same wifi open it (they comment as guests)
 //   node local.mjs reply <id> "text"           answer a comment on the page, as Claude (LAB_AGENT_NAME to change)
 //   node local.mjs resolve <id>                resolve a comment
 //   node local.mjs claim                       this Claude session takes over the folder (the page says who it talks to)
@@ -29,6 +30,8 @@ const flag = (name, fallback) => {
 const portFlag = flag('--port');
 const dirFlag = flag('--dir');
 const nameFlag = flag('--name');
+const wifiAt = args.indexOf('--wifi');
+const WIFI = wifiAt !== -1 && Boolean(args.splice(wifiAt, 1));
 
 // The Claude session running this command, if any.
 function mySession() {
@@ -57,7 +60,7 @@ if (args[0] === 'reply' || args[0] === 'resolve' || args[0] === 'claim') {
       console.error('no session to claim with: run this from Claude Code, or pass --name');
       process.exit(1);
     }
-    const res = await fetch(`http://localhost:${server.port}/_lab/session`, { method: 'POST', headers });
+    const res = await fetch(`http://localhost:${server.port}/_lab/session`, { method: 'POST', headers, body: '{}' });
     console.log(res.ok ? `the page now talks to ${session.name}. To hear new comments as they come: tail -n 0 -f ${path.join(dir, '.lab/inbox.jsonl')}` : await res.text());
     process.exit(res.ok ? 0 : 1);
   }
@@ -164,6 +167,23 @@ function announce(page, comment, fromAgent) {
 }
 
 // Only this computer gets the admin key (resolve, delete). Phones and laptops on the same wifi comment as guests.
+// Who may talk to this server: only names that point at this computer, so another website can't reach it
+// through DNS tricks, and only pages served from here may post comments.
+const wifiAddrs = () => Object.values(os.networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal).map((a) => a.address);
+const hostName = os.hostname().replace(/\.local$/, '').toLowerCase();
+const allowedHost = (h = '') => {
+  const name = h.toLowerCase().replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+  return ['localhost', '127.0.0.1', '::1'].includes(name) || (WIFI && (name === `${hostName}.local` || wifiAddrs().includes(name)));
+};
+const sameOrigin = (req) => {
+  const o = req.headers.origin;
+  if (!o) return !req.headers['sec-fetch-site'] || req.headers['sec-fetch-site'] === 'same-origin'; // the CLI sends no origin
+  try {
+    return new URL(o).host === req.headers.host;
+  } catch {
+    return false;
+  }
+};
 const isLocal = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 const inject = (local) => `
 <script>try{${local ? `localStorage.setItem('lab-admin',${JSON.stringify(TOKEN)});` : ''}if(localStorage.getItem('lab-on')===null)localStorage.setItem('lab-on','1')}catch{}</script>
@@ -186,6 +206,11 @@ const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, origin);
+    if (!allowedHost(req.headers.host)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('unknown host');
+    if (req.method !== 'GET' && req.method !== 'HEAD' && (!sameOrigin(req) || !/^application\/json/.test(req.headers['content-type'] || '')))
+      return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
+    // .lab (comments, admin key), .git, .env and other dot files are never served.
+    if (decodeURIComponent(url.pathname).split('/').some((s) => s.startsWith('.'))) return res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
     if (url.pathname === '/_lab/live') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
       res.write(': hi\n\n');
@@ -249,7 +274,7 @@ http.createServer(async (req, res) => {
     const lab = url.pathname.startsWith('/_lab/');
     const base = lab ? path.join(REPO, 'public') : ROOT;
     let file = path.join(base, decodeURIComponent(url.pathname));
-    if (!file.startsWith(base)) return res.writeHead(403).end();
+    if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
     if (fs.existsSync(file) && fs.statSync(file).isDirectory()) {
       if (!fs.existsSync(path.join(file, 'index.html'))) return listing(res, file, url.pathname);
       file = path.join(file, 'index.html');
@@ -283,16 +308,15 @@ http.createServer(async (req, res) => {
     console.error(e);
     res.writeHead(500).end(String(e));
   }
-}).listen(PORT, () => {
+}).listen(PORT, WIFI ? undefined : '127.0.0.1', () => {
   saveServer();
   console.log(`[lab] ${origin}  (pages from ${ROOT}; comments in .lab/comments.md${session ? `; talking to ${session.name}` : ''})`);
-  const wifi = Object.values(os.networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal).map((a) => `http://${a.address}:${PORT}`);
-  const host = os.hostname().replace(/\.local$/, '');
-  if (wifi.length) console.log(`[lab] other devices on this wifi: http://${host}.local:${PORT} or ${wifi.join(', ')}`);
+  if (WIFI) console.log(`[lab] other devices on this wifi: http://${hostName}.local:${PORT} or ${wifiAddrs().map((a) => `http://${a}:${PORT}`).join(', ')}`);
+  else console.log('[lab] only this computer can open it; add --wifi to let phones on the same wifi in');
 });
 
 function saveServer() {
-  fs.writeFileSync(path.join(LAB, 'server.json'), JSON.stringify({ port: PORT, token: TOKEN, session }, null, 2));
+  fs.writeFileSync(path.join(LAB, 'server.json'), JSON.stringify({ port: PORT, token: TOKEN, session }, null, 2), { mode: 0o600 });
 }
 
 function sessionFrom(req) {
