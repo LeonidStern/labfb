@@ -1225,6 +1225,13 @@
     "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M3 23V12.5a9.5 9.5 0 1 1 9.5 9.5H4z' fill='black' stroke='white' stroke-width='2'/%3E%3C/svg%3E\") 3 23, crosshair";
   fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   fonts.textContent += `html.lab-pinning body, html.lab-pinning body *:not(${INTERACTIVE}, a *, button *, label *, [role="button"] *, [data-lab-comments]) { cursor: ${PIN_CURSOR}; }`;
+  // Holding Option (Alt) shows the pin cursor on links and controls too, since Option-click pins there.
+  fonts.textContent += `html.lab-pinning.lab-alt body, html.lab-pinning.lab-alt body *:not([data-lab-comments], [data-lab-comments] *, ${OFF}, ${OFF} *) { cursor: ${PIN_CURSOR} !important; }`;
+  const setAlt = (down) => document.documentElement.classList.toggle('lab-alt', Boolean(down));
+  addEventListener('keydown', (e) => e.key === 'Alt' && setAlt(true), true);
+  addEventListener('keyup', (e) => e.key === 'Alt' && setAlt(false), true);
+  addEventListener('pointermove', (e) => setAlt(e.altKey), { capture: true, passive: true }); // Option pressed while another window had focus
+  addEventListener('blur', () => setAlt(false));
 
   const start = () => {
     document.head.append(fonts);
