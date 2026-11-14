@@ -28,6 +28,8 @@ Run it as npx @leonidstern/labfb …, or node local.mjs … from a clone.
       Quick model: when the claude command is installed, a quick model (claude -p, haiku) tries each new comment
       from this computer first. Small, clear changes it makes and answers "Done: …" on the pin; anything else
       goes to the session as usual. --no-fast turns it off.
+  labfb pages
+      Write .lab/lab-pages.md here: every running lab's pages as links, with open comment counts.
   labfb preview [folder]
       Add "lab" to .claude/launch.json: the Claude desktop app then opens the pages in its own preview pane.
 
@@ -106,6 +108,44 @@ if (pos[0] === 'preview') {
   console.log(`Added "lab" to ${file}.`);
   console.log('Open this folder in the Claude desktop app and ask Claude to start the "lab" preview.');
   console.log(`Then: run \`${CMD} wait\` in the background and answer the comments.`);
+  process.exit(0);
+}
+
+// ---------- every running lab's pages, as a Markdown list ----------
+// Written to .lab/lab-pages.md in this folder: a file Claude can send to the person, so the pages sit with its outputs.
+if (pos[0] === 'pages') {
+  const reg = path.join(process.env.LABFB_HOME || path.join(os.homedir(), '.labfb'), 'servers');
+  const labs = [];
+  for (const name of fs.existsSync(reg) ? fs.readdirSync(reg).filter((n) => n.endsWith('.json')) : []) {
+    const file = path.join(reg, name);
+    let entry;
+    try {
+      entry = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const res = await fetch(`http://localhost:${entry.port}/_lab/pages`, { signal: AbortSignal.timeout(2000) });
+      if (res.ok) labs.push(await res.json());
+    } catch {
+      // A lab that stopped without cleaning up: drop its file.
+      try {
+        process.kill(entry.pid, 0);
+      } catch {
+        fs.rmSync(file, { force: true });
+      }
+    }
+  }
+  labs.sort((a, b) => a.name.localeCompare(b.name));
+  const lines = [];
+  for (const lab of labs) {
+    if (labs.length > 1) lines.push(`**${lab.name}**`, '');
+    for (const p of lab.pages) {
+      const name = (p.title || p.file || p.path).replace(/[[\]]/g, '');
+      lines.push(`- [${name}](${p.url})${p.open ? ` · ${p.open} open` : ''}`);
+    }
+    lines.push('');
+  }
+  const out = path.resolve(opts.dir || '.', '.lab', 'lab-pages.md');
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.writeFileSync(out, (lines.join('\n').trim() || 'No labs running.') + '\n');
+  console.log(out);
   process.exit(0);
 }
 
@@ -428,6 +468,15 @@ const setMode = (m) => {
   broadcast();
 };
 let PORT = Number(opts.port || process.env.PORT || 4400);
+// Every running lab on this computer, for the Lab panel in Claude: one file per port, removed on exit.
+const REGISTRY = path.join(process.env.LABFB_HOME || path.join(os.homedir(), '.labfb'), 'servers');
+const registryFile = () => path.join(REGISTRY, `${PORT}.json`);
+const register = () => {
+  try {
+    fs.mkdirSync(REGISTRY, { recursive: true });
+    writeAtomic(registryFile(), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, name: path.basename(ROOT), proxy: PROXY?.origin || null, startedAt: new Date().toISOString() }, null, 2));
+  } catch {}
+};
 const saveServer = () => writeAtomic(SERVER, JSON.stringify({ port: PORT, pid: process.pid, token: TOKEN, session }, null, 2), 0o600);
 const clients = new Set();
 const state = (local) => JSON.stringify({ ...version, mode, session: session && (local ? session : { name: session.name }) });
@@ -749,6 +798,20 @@ const handler = async (req, res) => {
       });
       return;
     }
+    // What the Lab panel lists: this lab's pages with their open comments. This computer only.
+    if (pathname === '/_lab/pages') {
+      if (!isLoopback(req)) return res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
+      const openOn = (key) => commentsOf(key).filter((c) => !c.parent && !c.resolved).length;
+      const list = (PROXY ? [] : pagesUnder(ROOT)).map((rel) => ({ url: origin + urlOf(rel), title: titleOf(path.join(ROOT, rel)), file: rel, key: keyFor(rel) }));
+      if (PROXY) list.push({ url: origin + '/', title: '', file: '', key: '/' });
+      // A dev server's pages: the ones with comments.
+      for (const key of pages()) if (!list.some((p) => p.key === key)) list.push({ url: origin + key, title: '', file: fileFor(key) || '', key });
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      return res.end(JSON.stringify({
+        name: path.basename(ROOT), root: ROOT, port: PORT, proxy: PROXY?.origin || null, mode, listening: session?.name || null,
+        pages: list.map(({ key, ...p }) => ({ ...p, path: key, open: openOn(key) })),
+      }));
+    }
     if (pathname.startsWith('/_lab/agent/')) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
       return res.end(await agentText(pathname.slice('/_lab/agent'.length)));
@@ -866,6 +929,7 @@ server.on('error', (e) => {
 server.on('listening', async () => {
   origin = `http://localhost:${PORT}`;
   saveServer();
+  register();
   await persist();
   console.log(`[lab] ${origin}  ·  ${PROXY ? `pages from the dev server at ${PROXY.origin}, comments in` : 'pages from'} ${ROOT}`);
   console.log(WIFI ? `[lab] other devices on this wifi: http://${hostName}.local:${PORT} or ${wifiAddrs().map((a) => `http://${a}:${PORT}`).join(', ')}`
@@ -882,6 +946,9 @@ server.on('listening', async () => {
 const bye = () => {
   try {
     if (JSON.parse(fs.readFileSync(SERVER, 'utf8')).pid === process.pid) fs.rmSync(SERVER);
+  } catch {}
+  try {
+    if (JSON.parse(fs.readFileSync(registryFile(), 'utf8')).pid === process.pid) fs.rmSync(registryFile());
   } catch {}
   process.exit(0);
 };
